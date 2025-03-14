@@ -1,0 +1,586 @@
+---
+title: "Competition Pf vs Ec (8_11_23)"
+author: "Julius Hoffmann"
+date: "2024-02-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+On 11.8.23 Pseudomonas fluorescence (Pf) & Escherichia coli (Ec) were set to compete against each other. 
+We let them compete starting from different frequencies  (0.9,0.5,0.1).
+In each competition culture one of the species was stained with a fluorescence dye (CellBriteFix 640). All experimental conditions were tested with either of the species stained. Each condition (combination of stained isolate, starting frequency) was replicated three times. 
+Competition cultures were incubated at 20°C for 10 hours and sampled every 2h. Sampling was performed in two ways:
+1) Part of the sample was plated on PPY agar, colonies of both species were enumerated (distinct morphology),done only at the start (master-mix) and the end of the experiment (TP5).
+2) Part of the sample was fixed with Formol and later fluorescence intensity per cell was measured using the ISX to distinguish species.
+Ole Johannsen used a receiver-operator-curve to determine fluorescence thresholds that distinguish between stained Pf vs unstained Ec and unstained Pf vs stained Ec.
+
+```{r , message=FALSE}
+library(tidyverse)
+library(data.table)
+library(rstatix)
+library(lmerTest)
+library(emmeans)
+library(patchwork)
+library(flextable)
+library(tibble)
+library(RColorBrewer)
+```
+
+## Load data
+
+```{r pressure, echo=FALSE}
+#load data from staining
+stain_freqs  <- read.delim("Competition Exp Species 8_11_23/Freq_ISX_comp_species_8_11_23_Ch11_TH_320_379.tsv")
+
+#load data from plating
+plates<- read.delim("Competition Exp Species 8_11_23/Freq_plates_comp_species_8_11_23.tsv")
+```
+
+Set facetting lables for plots.
+
+```{r, message=FALSE , echo=FALSE}
+starting.labs <- c("t(0) 10vol% Pf","t(0) 50vol% Pf","t(0) 90vol% Pf" )
+names(starting.labs) <- c(0.1,0.5, 0.9)
+
+stain.labs <- c("Ec stained", "Pf stained", "ctrl")
+names(stain.labs) <- c("Ec", "Pf", "none")
+```
+
+```{r}
+#set flextable defaults
+set_flextable_defaults(
+  font.size = 10, theme_fun = theme_vanilla,
+  padding = 6, digits = 4,
+  font.family = "Arial")
+```
+
+## Correspondence of frequencies from staining and on growth agar 
+
+We first investigate the correspondence between both frequency estimates to show the reliability of our staining methodology for different species. Here, we evaluated this only at start and end point as these we they only time points with samples enumerated on growth agar.
+
+```{r, echo=FALSE}
+#filter the relevant data (e.g. exclude controls)
+ISX_freqs_tp_0_5 <-stain_freqs  %>%
+  
+  dplyr::filter(!row == "A" & !row == "H")%>% 
+  dplyr::filter(time.point == 0 | time.point == 5 ) %>% 
+  dplyr::filter(!well == 4 & !well == 12) 
+  
+all_freqs <-  left_join(plates,ISX_freqs_tp_0_5, by = join_by(starting.Freq == starting_frequency, sample, stained_species, time.point ))
+
+all_freqs[,"starting.Freq"] <- as.factor(all_freqs[,"starting.Freq"])
+all_freqs[,"stained_species"] <- as.factor(all_freqs[,"stained_species"])
+all_freqs[,"sample"] <- as.factor(all_freqs[,"sample"])
+all_freqs <- all_freqs %>% 
+  mutate(time = time.point*2) 
+```
+
+Plot of both frequency estimates against each other:
+
+```{r, echo=FALSE, fig.dim = c(8, 6) }
+
+ggplot(all_freqs )+
+  geom_point(aes(x = freq_Pf_plate, y= freq_Pf_ISX,  colour =  time), size = 2.5)+
+  geom_smooth(aes(x = freq_Pf_plate, y= freq_Pf_ISX),method = "lm")+
+  facet_grid(~stained_species, labeller = labeller( stained_species = stain.labs ) )+
+  scale_color_gradient(low = "blue", high = "red",name = "time [h]", breaks = c(0,2,4,6,8,10))+
+  geom_abline(intercept = 0, slope = 1)+
+  labs(x = "Pf frequency on plates", y = "Pf frequency by staining")+
+  xlim(0,1)+
+  ylim(0,1)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+         panel.grid.minor = element_blank(),
+         plot.title = element_text(size = 20, face = "bold"),
+         legend.text = element_text(size = 18),
+         legend.title = element_text(size = 18, face = "bold"),
+         legend.key.size = unit(1, "cm"),
+         axis.text = element_text(color = "grey50", size = 18),
+         axis.title = element_text(size = 20),
+         axis.title.y = element_text( colour = "black"),
+         axis.title.y.right = element_text( colour = "#00A9E0"),
+         strip.text = element_text(size = 18, colour = "black", face = "bold"),
+         strip.background = element_rect(color="black", fill="white", linewidth=1, linetype="solid"))
+
+ggsave("Correlation_plate_dye_species.jpg", device = "jpg", path = "Results/", width = 350, height = 200,  units = "mm" )
+```
+
+Slopes of the regressions above using a linear model:
+
+```{r, echo=FALSE}
+regression <- lm(freq_Pf_ISX ~ stained_species/freq_Pf_plate -1, data = all_freqs)
+```
+
+```{r}
+S_7 <- summary(regression)$coefficients %>% 
+  as.data.frame() %>% 
+  rownames_to_column() %>% 
+  rename( c( "Coefficient" = "rowname")) %>% 
+  flextable() %>% 
+  colformat_double( digits = 3)%>% 
+  add_header_lines(values = c("A linear model (LM, stats::lm) was used to perform linear regression between Pseudomona fluorescence frequency found on growth agar and determined by fluorescence thresholds. Two indepentend regressions were estimated for each stained species. Formular: freq_Pf_ISX ~ stained_species/freq_Pf_plate -1 . The table gives coefficients of this LM. Rows 1-2 give intercepts and rows 3-4 give slopes of the independent regressions.") ) 
+
+S_7
+```
+
+## Correlation between both frequency estimates
+
+To further investigate the reliability of our staining methodology we test the correlation between both frequency estimates.
+
+Note: p = 0 is not actually zero but just very small.
+
+1) overall correlation between frequencies on plates and by staining
+```{r}
+all_freqs %>% 
+  rstatix::cor_test(freq_Pf_ISX,freq_Pf_plate)%>% 
+  knitr::kable("simple", digits = 4)
+```
+
+2) correlation between frequencies on plates and by staining split by stained isolate
+```{r}
+all_freqs %>% 
+  group_by(stained_species) %>% 
+  rstatix::cor_test(freq_Pf_ISX,freq_Pf_plate)%>% 
+  knitr::kable("simple", digits = 4)
+```
+
+The correlation between both estimates is  moderate (0.6). The strength of the correlation is dependent on the species stained (Ec: 0.53, Pf: 0.73) as is the slope (Ec: 0.51, Pf: 0.74). The staining methodology appears less reliably for species than for clones. However, the significantly positive correlation with the reference method is sufficient evidence to still investigate the biological characteristics of the competition.
+
+## Plot frequencies by staining
+
+To get insight into the competition between Pf and Ec we first look at how relative abundance trajectories change under competition.
+
+```{r, echo=FALSE, fig.dim = c(12, 8)}
+#plot frequencies derived from stained samples
+stain_freqs %>% 
+  dplyr::filter(!starting_frequency == 1,!starting_frequency == 0) %>% 
+  mutate(time = time.point*2) %>%
+  dplyr::filter(!row == "A" & !row == "H")%>% 
+  dplyr::filter(!well == 4 & !well == 12) %>% 
+ggplot( aes(x = time, y = freq_Pf_ISX,colour = as.factor(stained_species), group = sample))+
+  geom_line(linewidth=0.3)+
+  geom_point(size=0.5)+
+  facet_grid( ~ starting_frequency , labeller = labeller( stained_species = stain.labs, starting_frequency = starting.labs)  )+
+  scale_color_discrete(name= "stained species")+
+  scale_x_continuous(breaks = c(0,2,4,6,8,10))+
+  ylim(0,1)+
+  labs(x= "time [h]", y= "frequency Pf",)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+         panel.grid.minor = element_blank(),
+         plot.title = element_text(size = 20, face = "bold"),
+         legend.text = element_text(size = 18),
+         legend.title = element_text(size = 18, face = "bold"),
+         legend.key.size = unit(1, "cm"),
+         axis.text = element_text(color = "grey50", size = 18),
+         axis.title = element_text(size = 20),
+         axis.title.y = element_text( colour = "black"),
+         axis.title.y.right = element_text( colour = "#00A9E0"),
+         strip.text = element_text(size = 18, colour = "black", face = "bold"),
+         strip.background = element_rect(color="black", fill="white", linewidth=1, linetype="solid"))
+
+ggsave("frequency_Pf_staining.jpg", device = "jpg", path = "Results/", width = 350, height = 200,  units = "mm" )
+```
+
+To quantify these trajectories we fit them to a linear mixed effects model. 
+
+```{r}
+#filtering the relevant trajectories (exclude controls) 
+stain_freqs_lm <- stain_freqs %>% 
+  mutate(time = time.point*2) %>%
+  filter(!sample %like% "A") %>% 
+  filter(!sample %like% "H") %>% 
+  filter(!well == 4 & !well == 12) %>% 
+  filter(!starting_frequency == 1,!starting_frequency == 0) %>% 
+  group_by(stained_species, sample,  starting_frequency) %>% 
+  mutate(replicate_unique= cur_group_id())
+```
+
+```{r}
+stain_freqs_lm$starting_frequency <- as.factor(stain_freqs_lm$starting_frequency)
+stain_freqs_lm$stained_species  <- as.factor(stain_freqs_lm$stained_species )
+
+m_stain_freqs <- lmer(freq_Pf_ISX~ time + starting_frequency + time:starting_frequency + stained_species + time:stained_species + (1|replicate_unique), data = stain_freqs_lm)
+```
+
+Model assessment and inference. 
+
+Checking model assumptions:
+
+```{r}
+#Residuals vs fitted values:
+scatter.smooth(fitted(m_stain_freqs),resid(m_stain_freqs)); abline(h=0,lty=2)
+
+#Check homoscedastiscity: absolute square root of the residuals:
+scatter.smooth(fitted(m_stain_freqs), sqrt(abs(resid(m_stain_freqs))))
+
+#Normality of residuals (fixed effects)
+qqnorm(resid(m_stain_freqs), main= "normal QQ-plot, residuals")
+qqline(resid(m_stain_freqs))
+
+#Data vs fitted
+plot(stain_freqs_lm$freq_Pf_ISX,fitted(m_stain_freqs))
+abline(0,1)
+```
+
+```{r}
+S_8a <- summary(m_stain_freqs)$coefficients %>% 
+  as.data.frame() %>% 
+  rownames_to_column() %>% 
+  rename( c( "Coefficient" = "rowname")) %>% 
+  flextable() %>% 
+  colformat_double( digits = 3)%>% 
+  add_header_lines(values = c("A linear mixed model (LME, lmerTest::lmer) was fitted to test how relative frequency Pseudomona fluorescence changes over time during the competition with Escherichia coli. The treatment variables initial abundance of Pseudomona fluorescence and the stained species are included as fixed effects. A random intercept is used to account for the three replicates per treatment combination. Formula: freq_Pf_ISX~ time + starting_frequency + time:starting_frequency + stained_species + time:stained_species + (1|replicate_unique).")) #%>% 
+  #save_as_image("Results/Table_S6a.png")
+
+S_8b <- anova(m_stain_freqs) %>%
+   as.data.frame() %>% 
+  rownames_to_column() %>% 
+  rename( c( "Variable" = "rowname")) %>% 
+  flextable() %>% 
+  colformat_double( digits = 3) %>% 
+  add_header_lines(values = c("Analysis of variance on the LME that tested how relative frequency of Pseudomona fluorescence changes over time during the competition with Escherichia coli. P<0.05 was taken as significance threshold.")) #%>% 
+  #save_as_image("Results/Table_S6b.png")
+```
+
+Deriving slopes for each combination of stained species and starting frequency.
+We find that in 5/6 combinations there is a slight but significantly positive trend. The biggest trend is observed at equal starting frequencies. At equal starting frequencies, trends seem more negative when Pf was stained.
+
+```{r}
+S_8c <- test(emmeans::emtrends(m_stain_freqs, c("stained_species", "starting_frequency"), var = "time")) %>% 
+  flextable() %>% 
+  colformat_double( digits = 3)%>% 
+  add_header_lines(values = c("Estimated Marginal Means of linear trends (EMM, emmeans::emtrends, emmeans::test) derived from the LME on Pseudomona fluorescence frequency. Trends were estimated across fixed effects  initial abundance of Pseudomona fluorescence and stained species."))
+
+S_8c
+
+#save_as_image(freq_trends_species,"Results/Table_S6c.png")
+```
+
+## Plot frequencies on plates
+
+For completeness, we can also look at clone frequencies on growth agar. However, this is not the focus of our analysis.
+
+```{r, echo=FALSE, fig.dim = c(12, 8)}
+plates %>% 
+  mutate(time = time.point*2) %>%
+ggplot( aes(x = time, y = freq_Pf_plate))+
+  geom_line(aes(colour = as.factor(stained_species), group = sample))+
+  facet_grid(~ starting.Freq, labeller = labeller(stained_species = stain.labs, starting.Freq = starting.labs) )+
+  scale_color_discrete(name= "stained species")+
+  scale_x_continuous(breaks = c(0,2,4,6,8,10))+
+  ylim(0,1)+
+  labs(x= "time [h]", y= "frequency Pf",)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+         panel.grid.minor = element_blank(),
+         plot.title = element_text(size = 20, face = "bold"),
+         legend.text = element_text(size = 18),
+         legend.title = element_text(size = 18, face = "bold"),
+         legend.key.size = unit(1, "cm"),
+         axis.text = element_text(color = "grey50", size = 18),
+         axis.title = element_text(size = 20),
+         axis.title.y = element_text( colour = "black"),
+         axis.title.y.right = element_text( colour = "#00A9E0"),
+         strip.text = element_text(size = 18, colour = "black", face = "bold"),
+         strip.background = element_rect(color="black", fill="white", linewidth=1, linetype="solid"))
+```
+
+Overall, we also see positve trends over time.
+
+## Population Densities
+
+Optical density (OD600nm) of cultures was measured over time. These population dynamics give further insight into the biology of the competition. 
+We plot the population dynamics over time and quantify them using a linear model to investigate the carrying capacity (max OD) of co-cultures. 
+
+```{r, message=FALSE,echo=FALSE}
+#load data 
+#there is data from two separately acquired microtiter plates
+
+Plate_1_OD<- read.delim("Competition Exp Species 8_11_23/Competition Assay Species 8_11_23 plates 1 and 2.txt", skip = 60 , nrows =8, dec = "," )
+
+Plate_2_OD <- read.delim("Competition Exp Species 8_11_23/Competition Assay Species 8_11_23 plates 1 and 2.txt", skip = 152 , nrows =8, dec = ","  )
+
+#data transformation
+
+#plate 1
+Plate_1_OD<- Plate_1_OD %>% 
+  select(-X12)
+colnames(Plate_1_OD) <- c(1:12)
+
+Plate_1_OD<- cbind(row.names(Plate_1_OD),Plate_1_OD)
+colnames(Plate_1_OD)[1]<- c("row")
+
+Plate_1_OD<- pivot_longer(Plate_1_OD, cols = c(2:13), names_to = "column", values_to = "OD")
+
+Plate_1_OD$column <-as.numeric(Plate_1_OD$column)
+
+Plate_1_OD<- Plate_1_OD %>% 
+  mutate(well= paste(row,column, sep = ""),
+         time.point =  case_when(column <=4 ~ 0,
+                                 column >= 5 & column <= 8 ~ 1,
+                                 column >=9  ~ 2
+         )) %>% 
+  mutate(sample = case_when(column == 1 ~ 1,
+                            column == 2 ~ 2,
+                            column == 3 ~ 3,
+                            column == 4 ~ 4,
+                            column == 5 ~ 1,
+                            column == 6 ~ 2,
+                            column == 7 ~ 3,
+                            column == 8 ~ 4,
+                            column == 9 ~ 1,
+                            column == 10 ~ 2,
+                            column == 11 ~ 3,
+                            column == 12 ~ 4)) %>% 
+  mutate(stained_species = case_when(row == "A" & sample == 1 ~ "Ec_ctrl",
+                                     row == "A" & sample == 2 ~ "Ec_none",
+                                     row == "A" & sample == 3 ~ "blank",
+                                     row == "A" & sample == 4 ~ "empty",
+                                     
+                                     row == "B" & sample <= 3 ~ "Pf",
+                                     row == "B" & sample == 4 ~ "Pf_ctrl",
+                                     
+                                     row == "C" & sample <= 3~ "Pf",
+                                     row == "C" & sample == 4~ "Pf_none",
+                                     
+                                     row == "D" & sample <= 3~ "Pf",
+                                     row == "D" & sample == 4 ~ "empty",
+                                     
+                                     row == "E" & sample <= 3~ "Ec",
+                                     row == "E" & sample == 4 ~ "empty",
+                                     
+                                     row == "F" & sample <= 3~ "Ec",
+                                     row == "F" & sample == 4~ "Ec_ctrl",
+                                     
+                                     row == "G" & sample <= 3~ "Ec",
+                                     row == "G" & sample == 4~ "Ec_none",
+                                     
+                                     row == "H" & sample == 1 ~ "Pf_ctrl",
+                                     row == "H" & sample == 2 ~ "Pf_none",
+                                     row == "H" & sample == 3 ~ "blank",
+                                     row == "H" & sample == 4 ~ "empty"
+  )
+  ) %>% 
+  mutate(sample = paste(row,sample, sep = ""))
+
+#plate 2
+Plate_2_OD<- Plate_2_OD %>% 
+  select(-X12)
+colnames(Plate_2_OD) <- c(1:12)
+
+Plate_2_OD<- cbind(row.names(Plate_2_OD),Plate_2_OD)
+colnames(Plate_2_OD)[1]<- c("row")
+
+Plate_2_OD<- pivot_longer(Plate_2_OD, cols = c(2:13), names_to = "column", values_to = "OD")
+
+Plate_2_OD$column <-as.numeric(Plate_2_OD$column)
+
+Plate_2_OD<- Plate_2_OD %>% 
+  mutate(well= paste(row,column, sep = ""),
+         time.point = case_when(column <=4 ~ 3,
+                                column >=5 & column <=8 ~ 4,
+                                column >=9  ~ 5
+         ))%>% 
+  mutate(sample = case_when(column == 1 ~ 1,
+                            column == 2 ~ 2,
+                            column == 3 ~ 3,
+                            column == 4 ~ 4,
+                            column == 5 ~ 1,
+                            column == 6 ~ 2,
+                            column == 7 ~ 3,
+                            column == 8 ~ 4,
+                            column == 9 ~ 1,
+                            column == 10 ~ 2,
+                            column == 11 ~ 3,
+                            column == 12 ~ 4)) %>% 
+  mutate(stained_species = case_when(row == "A" & sample == 1 ~ "Ec_ctrl",
+                                     row == "A" & sample == 2 ~ "Ec_none",
+                                     row == "A" & sample == 3 ~ "blank",
+                                     row == "A" & sample == 4 ~ "empty",
+                                     
+                                     row == "B" & sample <= 3 ~ "Pf",
+                                     row == "B" & sample == 4 ~ "Pf_ctrl",
+                                     
+                                     row == "C" & sample <= 3~ "Pf",
+                                     row == "C" & sample == 4~ "Pf_none",
+                                     
+                                     row == "D" & sample <= 3~ "Pf",
+                                     row == "D" & sample == 4 ~ "empty",
+                                     
+                                     row == "E" & sample <= 3~ "Ec",
+                                     row == "E" & sample == 4 ~ "empty",
+                                     
+                                     row == "F" & sample <= 3~ "Ec",
+                                     row == "F" & sample == 4~ "Ec_ctrl",
+                                     
+                                     row == "G" & sample <= 3~ "Ec",
+                                     row == "G" & sample == 4~ "Ec_none",
+                                     
+                                     row == "H" & sample == 1 ~ "Pf_ctrl",
+                                     row == "H" & sample == 2 ~ "Pf_none",
+                                     row == "H" & sample == 3 ~ "blank",
+                                     row == "H" & sample == 4 ~ "empty"
+  )
+  ) %>% 
+  mutate(sample = paste(row,sample, sep = ""))
+
+#Combine data from both plates in one data frame
+Plate_1_2_OD<- rbind(Plate_1_OD,Plate_2_OD)
+
+Plate_1_2_OD <- left_join(Plate_1_2_OD, stain_freqs[,c(6,12)], by = "sample",relationship = "many-to-many")
+```
+
+```{r}
+#new faceting labels
+stain.labs2 <- c("Ec stained", "Pf stained", "Pf unstained","Pf stained", "Ec unstained","Ec stained" )
+names(stain.labs2) <- c("Ec", "Pf", "Pf_none", "Pf_ctrl", "Ec_none", "Ec_ctrl")
+```
+
+We plot population dynamics of competition cultures and mono-culture controls separately.
+
+```{r, echo=FALSE,  fig.dim = c(12, 8), warning=FALSE}
+p1<-Plate_1_2_OD %>% 
+  mutate(time = time.point*2) %>% 
+  filter(stained_species == c("Ec","Pf")) %>% 
+ggplot( aes(x = time, y = OD, group =as.factor(sample), colour= as.factor(starting_frequency)))+
+  geom_line(linewidth=0.3)+
+  geom_point(size=0.5)+
+  facet_grid( ~ stained_species, labeller = labeller( stained_species = stain.labs2))+
+  scale_color_manual(name = "t(0) vol% Pf", breaks = c(0.1,0.5,0.9), labels = c(10,50,90), values = brewer.pal(3,"Dark2"))+
+  scale_x_continuous(breaks = c(0,2,4,6,8,10), name = "time [h]")+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+         panel.grid.minor = element_blank(),
+         plot.title = element_text(size = 20, face = "bold"),
+         legend.text = element_text(size = 18),
+         legend.title = element_text(size = 18, face = "bold"),
+         legend.key.size = unit(1, "cm"),
+         axis.text = element_text(color = "grey50", size = 18),
+         axis.title = element_text(size = 20),
+         axis.title.y = element_text( colour = "black"),
+         axis.title.y.right = element_text( colour = "#00A9E0"),
+         strip.text = element_text(size = 18, colour = "black", face = "bold"),
+         strip.background = element_rect(color="black", fill="white", linewidth=1, linetype="solid"))
+```
+
+```{r}
+p2<-Plate_1_2_OD %>% 
+  mutate(time = time.point*2) %>% 
+  filter(!stained_species == "Ec",!stained_species == "Pf",!stained_species == "empty",!stained_species == "blank") %>% 
+ggplot( aes(x = time, y = OD, group =as.factor(sample), colour= as.factor(starting_frequency)))+
+  geom_line(linewidth=0.3)+
+  geom_point(size=0.5)+
+  facet_grid( ~ stained_species, labeller = labeller( stained_species = stain.labs2))+
+  scale_color_discrete(name = "t(0) vol% Pf", breaks = c(0,0.1,0.5,0.9,1), labels = c(0,10,50,90,100), guide="none")+
+  scale_x_continuous(breaks = c(0,2,4,6,8,10), name = "time [h]")+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+         panel.grid.minor = element_blank(),
+         plot.title = element_text(size = 20, face = "bold"),
+         legend.text = element_text(size = 18),
+         legend.title = element_text(size = 18, face = "bold"),
+         legend.key.size = unit(1, "cm"),
+         axis.text = element_text(color = "grey50", size = 18),
+         axis.title = element_text(size = 20),
+         axis.title.y = element_text( colour = "black"),
+         axis.title.y.right = element_text( colour = "#00A9E0"),
+         strip.text = element_text(size = 18, colour = "black", face = "bold"),
+         strip.background = element_rect(color="black", fill="white", linewidth=1, linetype="solid"))
+
+```
+
+```{r}
+p1/p2+ plot_layout(guides ="collect",heights = c(1,1))
+
+ggsave("Population_dynamics_OD_species.jpg", device = "jpg", path = "Results/", width = 350, height = 350,  units = "mm" )
+```
+
+To quantify differences between different starting_frequencies we calculate the carrying capacity of dynamics (maximum OD).
+
+```{r}
+Plate_1_2_OD %>% 
+  filter(stained_species == c("Ec","Pf")) %>% 
+  group_by(starting_frequency, stained_species, sample) %>% 
+  reframe(OD_max = max(OD)) %>% 
+  ungroup() %>% 
+  group_by(starting_frequency, stained_species) %>% 
+  reframe(mean_OD_max= mean(OD_max),
+            OD_max_SE= sd(OD_max)/sqrt(n()))
+```
+
+We fit these values to a linear model.
+
+```{r}
+Plate_1_2_OD$starting_frequency <- as.factor(Plate_1_2_OD$starting_frequency)
+
+m_comp_OD_species <- Plate_1_2_OD %>% 
+  filter(stained_species == c("Ec","Pf")) %>% 
+  group_by(starting_frequency, stained_species, sample) %>% 
+  reframe(OD_max = max(OD)) %>% 
+  ungroup() %>% 
+  lm(OD_max ~ starting_frequency * stained_species , data= .)  
+```
+
+Checking model assumptions:
+
+```{r}
+plot(m_comp_OD_species)
+```
+
+Model inference:
+
+```{r}
+S_9a <- anova(m_comp_OD_species) %>% 
+  rownames_to_column("variable") %>% 
+  as_flextable() %>% 
+  colformat_double( digits = 3)%>% 
+  add_header_lines(values = c("Analysis of variance on a linear model testing how carrying capacity in competition co-cultures depended on initial abundance of Pseudomona fluorescence and the stained species. Carrying capacity was calculated as the maximum OD measured within a sample. Formular: OD_max ~ starting_frequency * stained_species. P<0.05 was taken as significance threshold."))
+
+S_9a
+
+#save_as_image(S_9a,"Results/Table_S7a.png")
+```
+
+We further compute marginal means using contrasts to test whether there are significant differences in carrying capacity (OD max) between the three different starting frequencies. Considering the interaction of starting frequency with stained species we derived means separately. However, the order between different starting frequencies holds across both species being stained. 
+
+```{r}
+mmeans_OD_species <- m_comp_OD_species  %>% 
+  emmeans(pairwise~ starting_frequency|stained_species)
+
+S_9c <- mmeans_OD_species$contrasts %>% 
+  rbind() %>% 
+  as.data.frame() %>% 
+  flextable()%>% 
+  colformat_double( digits = 3) %>% 
+  add_header_lines(values = c("Pairwise comparisons between estimated marginal means (lmerTest:emmeans) derived from a linear model testing how carrying capacity in competition co-cultures depended on experimental manipulations. For each stained species, pairwise comparisons between EMMs of different initial abundances of Pseudomona fluorescence were performed. The following formular was used: pairwise~ starting_frequency|stained_species. P<0.05 was taken as significance threshold."))
+
+S_9c
+
+#save_as_image(S_9b,"Results/Table_S7b.png")
+```
+
+To better illustrate that there is a higher carrying capacity with higher abundances of Ec I report estimated marginal means for each treatment combination.
+
+```{r}
+
+S_9b <- test(emmeans::emmeans(m_comp_OD_species, c("starting_frequency", "stained_species"))) %>% 
+  as.data.frame() %>% 
+  flextable() %>% 
+  colformat_double( digits = 3)%>% 
+  add_header_lines(values = c("Estimated marginal means (lmerTest:emmeans) derived from a linear model testing how carrying capacity in competition co-cultures depended on experimental manipulations. EMM were estimated across the three initial abundances of Pseudomonas fluorescens and the stained species. P<0.05 was taken as significance threshold."))
+
+    
+S_9b
+#save_as_image(Table_1,"Results/Table_1.png")
+```
+
+
+The marginal means and their contrasts suggest that carrying capacity was highest with initially 10vol% Pseudomonas fluorescens irrespective of the stained species.
+
+```{r}
+save_as_docx( "Table S7" = S_7, "Table S8a" = S_8a, "Table S8b" = S_8b, "Table S8c" = S_8c, "Table S9a" = S_9a, "Table S9b" = S_9b, path = "Results/Tables_S7-S9b.docx")
+```

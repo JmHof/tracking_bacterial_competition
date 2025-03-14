@@ -1,0 +1,244 @@
+---
+title: "I7 Stain Exp 8_2_23"
+author: "Julius Hoffmann"
+date: "2024-11-26"
+output: html_document
+---
+
+On 8.2.23 cultures of Pseudomonas fluorescence LTEE clones Coevo TP2 R2 I7 were stained with different volumes (400µl, 300µl, 200µl, 100µl) of the  fluorescence dye CellBriteFix 640 in order to determine the volume of staining solution yielding the best fluorescence signal. In addition to stained samples there were two unstained controls. Samples were incubated at 20°C for 10 hours and sampled every 2h. Samples were fixed with Formol and later fluorescence intensity was measured using the ISX. Features derived from the ISX are here directly evaluated. Additionally, data was sent to Ole Johannsen who determined a fluorescence threshold that distinguishes between stained and unstained samples. 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r , message=FALSE,echo=FALSE}
+library(tidyverse)
+library(data.table)
+library(patchwork)
+library(grid)
+library(RColorBrewer)
+library(flextable)
+```
+
+```{r}
+#setting flextable defaults
+set_flextable_defaults(
+  font.size = 10, theme_fun = theme_vanilla,
+  padding = 6,
+  font.family = "Arial")
+```
+
+## Load data
+
+```{r, message=FALSE}
+all_sample_annotated <- read.delim("Stain Concentration Experiment 8_2_23/Features_extracted.tsv")
+
+stain_freqs <- read.delim2("Stain Concentration Experiment 8_2_23/Thresholds_19_2_25/stained_unstained.txt", skip =3, nrows = 36) #file generated with the latest thresholds (19.2.25)
+#stain_freqs <- read.csv("Stain Concentration Experiment 8_2_23/Stain Concentration Experiment 8_2_23_stain_counts_thresholding.csv")
+
+threshold_stat <- read.csv("Stain Concentration Experiment 8_2_23/Thresholds_19_2_25/I7_thresholds_stats.csv")
+```
+
+## Thresholds - dye volume and time points
+
+We first assessed the performance of thresholds at different time points. A threshold was determined for TP0, TP5 and all TPs combined.
+The performance for the categorisation stained/unstained is compared for these thresholds.
+
+```{r}
+S_1 <- threshold_stat %>% 
+  group_by(time_point) %>% 
+  reframe(threshold=  mean(threshold),
+          average_TPR_TNR=  mean(average),
+    accuracy =  mean(accuracy),) %>% 
+  flextable()%>% 
+  colformat_double( digits = 3)%>% 
+  add_header_lines(values = c("Fluorescence thresholds and their performance regarding the un/stained classification are given. Initially, three thresholds (one based on all time points and each one based on TP0 or TP5) were determined for each of the four dye volumes (100µl, 200µl, 300µl and 400µl). The average threshold across dye volumes was calculated for each of the three time points and are displayed in the table. Likewise, performance of the thresholds was evaluated. average_TPR_TNR is the mean between the True Positive Ratio and the True Negative Ratio. Accuracy is the ratio of cells that were correctly classified."))
+
+S_1 
+
+#save_as_image(S_1 ,"Results/Table_S1.png")
+```
+
+A threshold across all time points yields the best accuracy. We now compare performance between different dye volumes.
+For this analysis we only use thresholds across all time points.
+
+```{r}
+S_2 <- threshold_stat %>% 
+  filter(time_point== "all") %>% 
+  group_by(volume_stain) %>% 
+  reframe(threshold=  mean(threshold),
+          average_TPR_TNR=  mean(average),
+    accuracy =  mean(accuracy),)%>% 
+  flextable()%>% 
+  colformat_double( digits = 3)%>% 
+  add_header_lines(values = c("Fluorescence thresholds and their performance regarding the un/stained classification are given. For each of the four dye volumes (100µl, 200µl, 300µl and 400µl) a threshold based on all time points was determined. Performance of the thresholds was evaluated based on average_TPR_TNR (the mean between the True Positive Ratio and the True Negative Ratio) and accuracy (the ratio of cells that were correctly classified). "))
+
+S_2 
+
+#save_as_image(S_2,"Results/Table_S2.png")
+```
+
+## ISX Features - Mean Ch11 fluorescence over time
+
+Plotting the mean Ch11 fluorescence of all acquired objects per sample over time is a simple indicator of staining performance. Overall, mean fluorescence decreased exponentially over time, suggesting a per cell dilution of the staining via consecutive cell divisions duiring bacterial proliferation. Fluorescence in stained samples stays higher than in unstained controls. The volume of staining solution used correlates positively with the intensity of fluorescence measured. Differences in fluorescence intensity caused by dye volume decrease over time. 
+
+```{r, echo=FALSE, fig.dim = c(10, 6)}
+#set desired variable classes
+all_sample_annotated$stained_isolate <- as.factor(all_sample_annotated$stained_isolate)
+all_sample_annotated$stain_concentration <- as.factor(all_sample_annotated$stain_concentration)
+all_sample_annotated$row <- as.factor(all_sample_annotated$row)
+all_sample_annotated$well <- as.factor(all_sample_annotated$well)
+
+all_sample_annotated <- all_sample_annotated %>% 
+  mutate(time = time_point*2) %>% 
+  filter(stained_isolate == "I7") 
+
+all_sample_annotated %>% 
+  group_by(stained_isolate, stain_concentration, time) %>% 
+  reframe(mean_intensity = mean(Intensity_MC_Ch11),
+          se_intensity = sd(Intensity_MC_Ch11)/sqrt(n())) %>% 
+  
+ggplot(aes(x = time,y = mean_intensity, colour = stain_concentration))+
+  geom_line(linewidth = 0.5)+
+  geom_point()+
+  geom_errorbar(aes(x= time, ymin = mean_intensity-se_intensity, ymax = mean_intensity+se_intensity, width =0.5 ))+
+  scale_colour_manual(name = "dye volume", values = brewer.pal(6,"Set1"))+
+  scale_x_continuous(breaks = c(0,2,4,6,8,10))+
+  facet_grid(~stained_isolate)+
+  labs(y= "mean fluorescence intensity", x= "time[h]")+
+  theme_bw()+
+  theme( panel.grid.major = element_blank(), 
+         panel.grid.minor = element_blank(),
+         plot.title = element_text(size = 20, face = "bold"),
+         legend.text = element_text(size = 18),
+         legend.title = element_text(size = 18, face = "bold"),
+         legend.key.size = unit(1, "cm"),
+         axis.text = element_text(color = "grey50", size = 18),
+         axis.title = element_text(size = 20),
+         axis.title.y = element_text( colour = "black"),
+         axis.title.y.right = element_text( colour = "#00A9E0"),
+         strip.text = element_text(size = 18, colour = "black", face = "bold"),
+         strip.background = element_rect(color="black", fill="white", linewidth=1, linetype="solid"))
+
+ggsave("Fluorescence_intensity_I7_stain_test.jpg", device = "jpg", path = "Results/", width = 350, height = 200,  units = "mm" )
+```
+
+To quantify this data the mean flurescence values + SE over time/after 10h are calculated.
+The values support the interpretation of the graph.
+
+```{r}
+all_sample_annotated %>% 
+  filter(time_point == 5) %>% 
+  group_by(stained_isolate, stain_concentration) %>% 
+  reframe(mean_intensity = mean(Intensity_MC_Ch11),
+          se_intensity = sd(Intensity_MC_Ch11)/sqrt(n())) %>%
+  flextable()%>% 
+   colformat_double( digits = 3) 
+```
+
+## ISX Thresholding
+
+Our aim was to detect the optimal dye volume for discrimination between stained and unstained cells. We performed discrimination by determining an optimal fluorescence threshold (receiver-operator curve) based on stained and unstained cultures. In the plot below the frequency of stained cells in a sample based on the thresholds were plotted over time. Optimally, stained samples should always be at 1.0 and unstained at 0.0. A dye volume of 400µl provides the most reliable discrimination.
+
+1) load data and annotate
+
+```{r, echo =FALSE}
+ISX_freqs <- stain_freqs%>% 
+  separate_wider_delim(File, delim = "." , names = c("sample", "drop"), cols_remove = TRUE) %>% 
+  select(sample ,Count..stained, X.Total..stained..All,  Count..All) %>% 
+  separate_wider_position(sample ,widths = c(row = 1,  well =2)) %>% 
+  rename(stained=Count..stained, ratio=X.Total..stained..All, total=Count..All) %>% 
+  mutate(well = as.numeric(well))
+
+#annotation for an older file
+#ISX_freqs <- stain_freqs[1:84,] %>% 
+# separate_wider_delim(file, delim = "." , names = c("sample", "drop"), cols_remove = TRUE) %>% 
+# select(sample ,ratio, stained, total) %>% 
+# separate_wider_position(sample ,widths = c(bs= 1,  sample =3)) %>% 
+# select(sample ,ratio, stained, total) %>% 
+# separate_wider_position(sample ,widths = c(row = 1,  well =2)) %>% 
+# dplyr::filter(!row == "A" & !row == "H" ) %>% 
+# mutate(well = as.numeric(well))
+  
+  
+ISX_freqs_annotated <- ISX_freqs %>% 
+  mutate(stained_isolate = case_when( well == 1  ~ "I8",
+                                      well == 3 ~ "I8",
+                                      well == 5 ~ "I8",
+                                      well == 7 ~ "I8",
+                                      well == 9 ~ "I8",
+                                      well == 11 ~ "I8",
+                                      well == 2 ~ "I7",
+                                      well == 4 ~ "I7",
+                                      well == 6 ~ "I7",
+                                      well == 8 ~ "I7",
+                                      well == 10 ~ "I7",
+                                      well == 12 ~ "I7"),
+         time_point= case_when( well == 1 | well == 2 ~ 0,
+                                well == 3 | well == 4 ~ 1,
+                                well == 5 | well == 6 ~ 2,
+                                well == 7 | well == 8 ~ 3,
+                                well == 9 | well == 10 ~ 4,
+                                well == 11 | well == 12 ~ 5),
+         stain_concentration = case_when(row == "B" ~ "Ctrl_1",
+                                         row == "C" ~ "400µ",
+                                         row == "D" ~ "300µ",
+                                         row == "E" ~ "200µ",
+                                         row == "F" ~ "100µ",
+                                         row == "G" ~ "Ctrl_2",))
+```
+
+Plot percentage of stained cells over time
+
+```{r, echo=FALSE, fig.dim = c(10, 6)}
+ISX_freqs_annotated <- ISX_freqs_annotated %>% 
+  filter(stained_isolate == "I7") %>% 
+  mutate(time = time_point*2)
+
+ISX_freqs_annotated %>% 
+
+ggplot(aes(x = time, y = ratio, colour = stain_concentration))+
+  geom_line(linewidth = 0.5)+
+  geom_point()+
+  facet_grid(~stained_isolate)+
+  scale_colour_manual(name = "dye volume", values = brewer.pal(6,"Set1"))+
+  scale_x_continuous(breaks = c(0,2,4,6,8,10))+
+  labs(x= "time [h]", y= "stained [%]")+
+  ylim(0,100)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+         panel.grid.minor = element_blank(),
+         plot.title = element_text(size = 20, face = "bold"),
+         legend.text = element_text(size = 18),
+         legend.title = element_text(size = 18, face = "bold"),
+         legend.key.size = unit(1, "cm"),
+         axis.text = element_text(color = "grey50", size = 18),
+         axis.title = element_text(size = 20),
+         axis.title.y = element_text( colour = "black"),
+         axis.title.y.right = element_text( colour = "#00A9E0"),
+         strip.text = element_text(size = 18, colour = "black", face = "bold"),
+         strip.background = element_rect(color="black", fill="white", linewidth=1, linetype="solid"))
+
+ggsave("I7_discrimination_stained_unstained_test.jpg", device = "jpg", path = "Results/", width = 350, height = 200,  units = "mm" )
+```
+
+To quantify this data the mean proportion of stained cells + SE over time/after 10h are calculated.
+The values support the interpretation of the graph.
+
+```{r}
+S_3 <- ISX_freqs_annotated %>% 
+  group_by(stained_isolate, stain_concentration) %>% 
+  reframe(mean_stained = mean(ratio),
+          se_stained = sd(ratio)/sqrt(n())) %>%
+  flextable()%>% 
+  colformat_double( digits = 3)%>% 
+  add_header_lines(values = c("Mean proportion of stained cells depending on dye volume. Using a fluorescence threshold based on all time points, cells in samples stained with 100µl, 200µl, 300µl or 400µl dye were classified as stained or unstained. Then the mean and standard error (se) across all time points was calculated."))
+
+S_3
+
+#save_as_image(mean_prop_stained,"Results/Table_S3.png")
+```
+
+```{r}
+save_as_docx("Table S1" = S_1, "Table S2" = S_2, "Table S3" = S_3,path = "Results/Tables_S1-S3.docx")
+```

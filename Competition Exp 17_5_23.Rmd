@@ -1,0 +1,563 @@
+---
+title: "Competition Pf Isolate 7 vs Isolate 6 (17_5_23)"
+author: "Julius Hoffmann"
+date: "2024-02-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+On 17.5.23 Pseudomonas clones LTEE Coevo TP2 R2 I7 & I6 were set to compete against each other. 
+We let them compete starting from different frequencies (0.9,0.5,0.1) in presence and absence of ciliate predators. 
+In each competition culture one of the isolates was stained with the fluorescence dye (CellBriteFix 640). All experimental conditions were tested with either of the isolates stained. Each condition (combination of stained isolate, starting frequency, predator presence) was replicated three times. 
+Competition culture were incubated at 20°C for 10 hours and sampled every 2h. Sampling was performed in two ways:
+1) Part of the sample was plated on PPY growth agar, colonies of both clones were enumerated (distinct morphology) (only two replicates per condition).
+2) Part of the sample was fixed with Formol and later fluorescence intensity per cell was measured using the ISX to distinguish clones.
+Ole Johannsen used a receiver-operator-curve to determine fluorescence thresholds that distinguish between stained I6 vs unstained I7 and unstained I6 vs stained I7.
+
+```{r , message=FALSE}
+library(tidyverse)
+library(data.table)
+library(rstatix)
+library(lmerTest)
+library(emmeans)
+library(flextable)
+library(patchwork)
+library(tibble)
+library(RColorBrewer)
+```
+
+```{r}
+#set flextable defaults
+set_flextable_defaults(
+  font.size = 10, theme_fun = theme_vanilla,
+  padding = 6, digits = 4,
+  font.family = "Arial")
+```
+
+## Load data
+
+```{r pressure, echo=FALSE}
+#load data from staining
+stain_freqs <- read.delim("Competition Exp 17_5_23/Freq_ISX_comp_17_5_23__th_19_2_25.tsv") #this is the file with the lates thresholds (19.2.25)
+#stain_freqs <- read.delim("Competition Exp 17_5_23/Freq_ISX_comp_17_5_23_analysis.tsv")
+
+#load data from plating
+plates <- read.delim("Competition Exp 17_5_23/Freq_on_plates_comp_17_5_23_analysis.tsv")
+
+```
+
+Set facetting lables for plots.
+
+```{r, message=FALSE , echo=FALSE}
+starting.labs <- c("t(0) 10vol% I7","t(0) 50vol% I7","t(0) 90vol% I7" )
+names(starting.labs) <- c(0.1,0.5, 0.9)
+
+stain.labs <- c("I6 stained", "I7 stained")
+names(stain.labs) <- c(6, 7)
+
+predator.labs <-  c("without predator", "with predator")
+names(predator.labs) <- c("NO", "YES")
+```
+
+## Correspondence of frequencies from staining and on growth agar 
+
+We first investigate the correspondence between both frequency estimates to show the reliability of our staining methodology. For each condition (stained isolate, starting frequency, predator presence/absence) only two replicates were enumerated on growth agar. Thus, the correlations include only two of the three replicates per condition. 
+
+```{r, message=FALSE , echo=FALSE}
+#combine frequencies from staining and plating
+
+#remove samples that were not plated and select columns of interest
+stained_comb <- stain_freqs %>% 
+  filter(!replicate %like% "A") %>% 
+  filter(!replicate %like% "H") %>% 
+  filter(!replicate %like% "D") %>% 
+  filter(!replicate %like% "G") %>% 
+  dplyr::select(starting_freq_I7, stained_isolate,replicate,predator, time.point, freq_I7, freq_I6)
+
+#select columns of interest and create matching column names and variable levels
+plates_comb <- plates %>% 
+  filter(!replicate %like% "D") %>% 
+  filter(!replicate %like% "G") %>% 
+  dplyr::select(starting_freq_I7, stained_isolate, replicate, predator, time.point, freq_I7, freq_I6) %>% 
+  mutate(predator = str_replace_all(predator,c("yes"= "YES", "no" = "NO")))
+colnames(plates_comb)[c(3,6,7)]<- c("replicate","freq_I7_plate", "freq_I6_plate")
+
+#combine frequency information from staining and plating
+combined_frequecies <- right_join(stained_comb,plates_comb, unmatched = "drop", by = c("starting_freq_I7","replicate", "time.point", "stained_isolate","predator") )
+
+#adjust variable classes
+combined_frequecies[,"starting_freq_I7"] <- as.factor(combined_frequecies[,"starting_freq_I7"])
+combined_frequecies[,"stained_isolate"] <- as.factor(combined_frequecies[,"stained_isolate"])
+```
+
+Plot of both frequency estimates against each other:
+
+```{r, echo=FALSE,  fig.dim = c(8, 8), warning=FALSE}
+
+#see https://www.datanovia.com/en/blog/ggplot-gradient-color/ for gradient colour
+
+combined_frequecies %>% 
+  mutate(time = time.point*2) %>%
+  ggplot(aes(x = freq_I7_plate, y= freq_I7))+
+  geom_point(aes(colour= time), size = 2.5)+
+  geom_smooth(method = "lm")+
+  facet_grid(predator~stained_isolate, labeller = labeller( stained_isolate = stain.labs, predator = predator.labs))+
+  geom_abline(slope = 1,intercept = 0)+
+  labs(x = "I7 frequency on plates", y = "I7 frequency by staining")+
+  scale_color_gradient(low = "blue", high = "red",name = "time [h]", breaks = c(0,2,4,6,8,10))+
+  xlim(0,1)+
+  ylim(0,1)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+         panel.grid.minor = element_blank(),
+         plot.title = element_text(size = 20, face = "bold"),
+         legend.text = element_text(size = 18),
+         legend.title = element_text(size = 18, face = "bold"),
+         legend.key.size = unit(1, "cm"),
+         axis.text = element_text(color = "grey50", size = 18),
+         axis.title = element_text(size = 20),
+         axis.title.y = element_text( colour = "black"),
+         axis.title.y.right = element_text( colour = "#00A9E0"),
+         strip.text = element_text(size = 18, colour = "black", face = "bold"),
+         strip.background = element_rect(color="black", fill="white", linewidth=1, linetype="solid"))
+
+ggsave("Correlation_plate_dye_isolates.jpg", device = "jpg", path = "Results/", width = 350, height = 200,  units = "mm" )
+```
+
+There is a very good correspondence between frequency estimates on plates and from the ISX.
+Samples with predators seem to have a slightly lower agreement, which can be seen by the smaller slopes in the regressions.
+
+Slopes of the regressions above using a linear model:
+
+```{r, echo=FALSE}
+#also used for correlations below
+corr_freq <- combined_frequecies 
+
+corr_freq$freq_I7 <- as.numeric(corr_freq$freq_I7)
+corr_freq$freq_I7_plate <- as.numeric(corr_freq$freq_I7_plate)
+corr_freq[,"starting_freq_I7"] <- as.factor(corr_freq[,"starting_freq_I7"])
+corr_freq[,"stained_isolate"] <- as.factor(corr_freq[,"stained_isolate"])
+corr_freq[,"replicate"] <- as.factor(corr_freq[,"replicate"])
+corr_freq[,"predator"] <- as.factor(corr_freq[,"predator"])
+```
+
+```{r, echo=FALSE}
+regression <- lm(freq_I7 ~ stained_isolate:predator/freq_I7_plate -1, data = corr_freq)
+
+coef(regression)[5:8]%>% 
+  knitr::kable("simple", digits = 4)
+```
+
+```{r}
+S_4 <- summary(regression)$coefficients %>% 
+  as.data.frame() %>% 
+  rownames_to_column() %>% 
+  rename( c( "Coefficient" = "rowname")) %>% 
+  flextable() %>% 
+  colformat_double( digits = 3)%>% 
+  add_header_lines(values = c("A linear model (LM, stats::lm) was used to perform linear regression between genotype I7 frequency found on growth agar and determined by fluorescence thresholds. Four indepentend regressions were estimated for each treatment combination of stained genotype(isolate) and predator presence. Formular:freq_I7(stained) ~ stained_isolate:predator/freq_I7_plate -1 . The table gives coefficients of this LM. Rows 1-4 give intercepts and rows 5-8 give slopes of the independent regressions.") ) 
+
+S_4
+```
+
+
+To further investigate the reliability of our staining methodology we test the correlation between both frequency estimates.
+
+Note: p = 0 is not actually zero but just very small.
+
+1) overall correlation between frequencies on plates and by staining
+
+```{r, echo=FALSE}
+corr_freq %>% 
+  rstatix::cor_test(freq_I7,freq_I7_plate) %>% 
+  knitr::kable("simple", digits = 4)
+```
+
+2) correlation between frequencies on plates and by staining split by predator absence/presence
+
+```{r, echo=FALSE}
+corr_freq %>% 
+  group_by(predator) %>% 
+  rstatix::cor_test(freq_I7,freq_I7_plate)%>% 
+  knitr::kable("simple", digits = 4)
+```
+
+3) correlation between frequencies on plates and by staining split by stained isolate
+
+```{r, echo=FALSE}
+corr_freq %>% 
+  group_by(stained_isolate) %>% 
+  rstatix::cor_test(freq_I7,freq_I7_plate)%>% 
+  knitr::kable("simple", digits = 4)
+```
+
+Generally, correlation between frequency estimates on plates and from the ISX is very high.
+Predator free samples seem to have a slightly better correlation than those with predators.
+Similarly, correlation with I6 stained is higher than with I7 stained.
+
+## Plot frequencies by staining
+
+Having established that the staining methodology reliably tracks the frequencies of competitors in co-culture, we can look at the biological characteristics of the competition.
+We first look at how relative abundance trajectories change under competition.
+
+```{r, echo=FALSE, fig.dim = c(12, 8)}
+stain_freqs %>% 
+  mutate(time = time.point*2) %>%
+  filter(!replicate %like% "A") %>% 
+  filter(!replicate %like% "H") %>% 
+ggplot(aes(x = time, y = freq_I7,group = replicate, colour = as.factor(stained_isolate)))+
+  geom_line(linewidth=0.3)+
+  geom_point(size=0.5)+
+  facet_grid(predator ~ starting_freq_I7, labeller = labeller(predator = predator.labs, starting_freq_I7 = starting.labs) )+
+  scale_x_continuous(breaks = c(0,2,4,6,8,10))+
+  scale_color_discrete(name= "stained isolate")+
+  ylim(0,1)+
+  labs(x= "time [h]", y= "frequency I7",)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+         panel.grid.minor = element_blank(),
+         plot.title = element_text(size = 20, face = "bold"),
+         legend.text = element_text(size = 18),
+         legend.title = element_text(size = 18, face = "bold"),
+         legend.key.size = unit(1, "cm"),
+         axis.text = element_text(color = "grey50", size = 18),
+         axis.title = element_text(size = 20),
+         axis.title.y = element_text( colour = "black"),
+         axis.title.y.right = element_text( colour = "#00A9E0"),
+         strip.text = element_text(size = 18, colour = "black", face = "bold"),
+         strip.background = element_rect(color="black", fill="white", linewidth=1, linetype="solid"))
+
+ggsave("frequency_I7_staining.jpg", device = "jpg", path = "Results/", width = 350, height = 200,  units = "mm" )
+```
+
+To quantify these trajectories we fit them to a linear mixed effects model. 
+
+```{r}
+#filtering the relevant trajectories (exclude controls) 
+stain_freqs_lm <- stain_freqs %>% 
+  mutate(time = time.point*2) %>%
+  filter(!replicate %like% "A") %>% 
+  filter(!replicate %like% "H") %>% 
+  group_by(stained_isolate, replicate, predator , starting_freq_I7) %>% 
+  mutate(replicate_unique= cur_group_id())
+```
+
+```{r}
+#setting variable classes
+stain_freqs_lm$starting_freq_I7 <- as.factor(stain_freqs_lm$starting_freq_I7)
+stain_freqs_lm$stained_isolate  <- as.factor(stain_freqs_lm$stained_isolate )
+
+#fitting the model
+m_stain_freqs <- lmer(freq_I7~ time + starting_freq_I7 + time:starting_freq_I7 + predator + stained_isolate + time:predator + time:stained_isolate  + predator:stained_isolate + (1|replicate_unique), data = stain_freqs_lm)
+```
+
+We also test an alternative model with the predator:stained_isolate interaction removed.
+
+```{r}
+m_stain_freqs_2 <- lmer(freq_I7~ time + starting_freq_I7 + time:starting_freq_I7 + predator + stained_isolate+ time:predator + time:stained_isolate + (1|replicate_unique), data = stain_freqs_lm)
+```
+
+However, the simpler model is not better, so we retain the interaction.
+```{r}
+anova(m_stain_freqs,m_stain_freqs_2)
+```
+
+Model assessment and inference. 
+
+Checking model assumptions:
+
+```{r}
+#Residuals vs fitted values:
+scatter.smooth(fitted(m_stain_freqs),resid(m_stain_freqs)); abline(h=0,lty=2)
+
+#Check homoscedastiscity: absolute square root of the residuals:
+scatter.smooth(fitted(m_stain_freqs), sqrt(abs(resid(m_stain_freqs))))
+
+#Normality of residuals (fixed effects)
+qqnorm(resid(m_stain_freqs), main= "normal QQ-plot, residuals")
+qqline(resid(m_stain_freqs))
+
+#Data vs fitted
+plot(stain_freqs_lm$freq_I7,fitted(m_stain_freqs))
+abline(0,1)
+```
+
+```{r}
+S_5a <- summary(m_stain_freqs)$coefficients %>% 
+  as.data.frame() %>% 
+  rownames_to_column() %>% 
+  rename( c( "Coefficient" = "rowname")) %>% 
+  flextable() %>% 
+  colformat_double( digits = 3)%>% 
+  add_header_lines(values = c("A linear mixed model (LME, lmerTest::lmer) was fitted to test how relative frequency of genotype I7 changes over time during the competition with genotype I6. The treatment variables initial abundance of I7, predator presence and the stained genotype are included as fixed effects. A random intercept is used to account for the three replicates per treatment combination. Formula: freq_I7~ time + starting_freq_I7 + time:starting_freq_I7 + predator + stained_isolate+ time:predator + time:stained_isolate + (1|replicate_unique).")) #%>% 
+  #save_as_image("Results/Table_S4a.png")
+
+S_5b <- anova(m_stain_freqs) %>%
+   as.data.frame() %>% 
+  rownames_to_column() %>% 
+  rename( c( "Variable" = "rowname")) %>% 
+  flextable() %>% 
+  colformat_double( digits = 3) %>% 
+  add_header_lines(values = c("Analysis of variance on the LME that tested how relative frequency of genotype I7 changes over time during the competition with genotype I6. P<0.05 was taken as significance threshold.")) #%>% 
+  #save_as_image("Results/Table_S4b.png")
+```
+
+Using the first model we derive slopes for each combination of predator absence/presence, stained isolate and starting frequency using the emtrends() function.
+In 10/12 combinations there is a significantly negative trend. Trends get increasingly negative with higher initial abundances of I7. At equal starting frequencies, trends seem more negative when I6 was stained and predators were present .
+
+```{r}
+S_5c <- test(emmeans::emtrends(m_stain_freqs, c("predator", "stained_isolate", "starting_freq_I7"), var = "time")) %>% 
+  flextable() %>% 
+  colformat_double( digits = 3)%>% 
+  add_header_lines(values = c("Estimated Marginal Means of linear trends (EMM, emmeans::emtrends, emmeans::test) derived from the LME on genotype I7 frequency. Trends were estimated across fixed effects  initial abundance of I7, predator presence and stained genotype."))
+
+S_5c
+
+#save_as_image(S_5c,"Results/Table_S4c.png")
+```
+
+## Plot frequencies on plates
+
+For completeness, we can also look at clone frequencies on growth agar. However, this is not the focus of our analysis. Here, 2 replicates per starting condition (stained_isolate, starting frequency, predator) were plated immediately on agar at every sampling time point (TP0 only master mixes not replicates directly). The third replicate per starting condition (samples of rows D & G) were plated after dilutions were stored at 4°C overnight. This affected the growth of isolates differently and consequently the results cannot be included in the analysis.
+
+```{r}
+#alternative facetting labels
+predator.labs2 <-  c("without predator", "with predator")
+names(predator.labs2) <- c("no", "yes")
+```
+
+```{r, echo=FALSE, fig.dim = c(12, 8)}
+plates %>% 
+  mutate(time = time.point*2) %>%
+  filter(!replicate %like% "D") %>% 
+  filter(!replicate %like% "G") %>% 
+ggplot( aes(x = time, y = freq_I7))+
+  geom_line(aes(group = replicate, colour = as.factor(stained_isolate)))+
+  facet_grid(predator ~ starting_freq_I7, labeller = labeller(predator = predator.labs2, starting_freq_I7 = starting.labs) )+
+  scale_color_discrete(name= "stained isolate")+
+  scale_x_continuous(breaks = c(0,2,4,6,8,10))+
+  labs(x= "time [h]", y= "frequency I7")+
+  ylim(0,1)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+         panel.grid.minor = element_blank(),
+         plot.title = element_text(size = 20, face = "bold"),
+         legend.text = element_text(size = 18),
+         legend.title = element_text(size = 18, face = "bold"),
+         legend.key.size = unit(1, "cm"),
+         axis.text = element_text(color = "grey50", size = 18),
+         axis.title = element_text(size = 20),
+         axis.title.y = element_text( colour = "black"),
+         axis.title.y.right = element_text( colour = "#00A9E0"),
+         strip.text = element_text(size = 18, colour = "black", face = "bold"),
+         strip.background = element_rect(color="black", fill="white", linewidth=1, linetype="solid"))
+```
+
+## Population Densities
+
+Optical density (OD600nm) of cultures was measured over time. These population dynamics give further insight into the biology of the competition. 
+We plot the population dynamics over time and quantify them using a linear model to investigate the carrying capacity (max OD) of co-cultures. 
+
+```{r, message=FALSE,echo=FALSE}
+#load data and transform
+Comp_OD <- read.delim("Competition Exp 17_5_23/Competition Assay 17_5_23 OD.txt")
+
+Comp_OD$well <- as.factor(Comp_OD$well)
+Comp_OD$row <- as.factor(Comp_OD$row)
+Comp_OD$sample <- as.numeric(Comp_OD$sample)
+Comp_OD$time.point <- as.numeric(Comp_OD$time.point)
+
+Comp_OD_sorted <- Comp_OD[,1:5]  %>% 
+  select(1:5) %>% 
+  mutate(predator = case_when(row == "A" ~ "NO",
+                              row == "B" & sample <= 3 ~ "YES",
+                              row == "C" & sample <= 3 ~ "YES",
+                              row == "D" & sample <= 3 ~ "YES",
+                              row == "E" & sample <= 3 ~ "YES",
+                              row == "F" & sample <= 3 ~ "YES",
+                              row == "G" & sample <= 3 ~ "YES",
+                              row == "H" ~ "NO"),
+         stained_isolate = case_when(
+                                    row == "A" & sample == 1 ~ "6",
+                                    row == "A" & sample == 2 ~ "6_ctrl",
+                                    row == "A" & sample == 5 ~ "7",
+                                    row == "A" & sample == 6 ~ "7_ctrl",
+                                    row ==   "B" ~ "7",
+                                     row ==   "C" ~ "7",
+                                     row ==   "D" ~ "7",
+                                     row ==   "E" ~ "6",
+                                     row ==   "F" ~ "6",
+                                     row ==   "G" ~ "6",
+                                     row == "H" & sample == 1 ~ "6",
+                                    row == "H" & sample == 2 ~ "6_ctrl",
+                                    row == "H" & sample == 5 ~ "7",
+                                    row == "H" & sample == 6 ~ "7_ctrl")
+                              )
+
+Comp_OD_sorted <- Comp_OD_sorted %>% 
+  mutate(predator = str_replace_na(predator)) %>% 
+  mutate(predator = str_replace_all(predator, pattern = "NA", replacement = "NO")) %>% 
+  mutate(time = time.point*2) 
+
+Comp_OD_sorted <- left_join(Comp_OD_sorted, stain_freqs[,c(2,7,10)], by = c("row", "sample"),relationship = "many-to-many")
+```
+
+```{r}
+#new facetting labels
+stain.labs3 <- c("I6 stained", "I7 stained","I6 unstained","I7 unstained" )
+names(stain.labs3) <- c("6", "7","6_ctrl","7_ctrl")
+```
+
+We plot population dynamics of competition cultures and mono-culture controls separately.
+
+```{r, echo=FALSE,  fig.dim = c(12, 8), warning=FALSE}
+p1<- Comp_OD_sorted %>% 
+  filter(!starting_freq_I7== 1,!starting_freq_I7== 0) %>% 
+
+ggplot(aes(x = time, y = OD_corr, group =as.factor(well), colour= as.factor(starting_freq_I7)))+
+  geom_line(linewidth=0.3)+
+  geom_point(size=0.5)+
+  scale_color_manual(name = "t(0) vol% I7", breaks = c(0.1,0.5,0.9), labels = c(10,50,90), values = brewer.pal(3,"Dark2"))+
+  facet_grid( predator ~ stained_isolate, labeller = labeller( stained_isolate = stain.labs3, predator = predator.labs))+
+  scale_x_continuous(name= "time [h]", breaks = c(0,2,4,6,8,10))+
+  labs(y= "population density [OD]", x= "time [h]")+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+         panel.grid.minor = element_blank(),
+         plot.title = element_text(size = 20, face = "bold"),
+         legend.text = element_text(size = 18),
+         legend.title = element_text(size = 18, face = "bold"),
+         legend.key.size = unit(1, "cm"),
+         axis.text = element_text(color = "grey50", size = 18),
+         axis.title = element_text(size = 20),
+         axis.title.y = element_text( colour = "black"),
+         axis.title.y.right = element_text( colour = "#00A9E0"),
+         strip.text = element_text(size = 18, colour = "black", face = "bold"),
+         strip.background = element_rect(color="black", fill="white", linewidth=1, linetype="solid"))
+```
+
+```{r}
+p2<-Comp_OD_sorted %>% 
+  filter(starting_freq_I7== c(0,1)) %>% 
+
+ggplot(aes(x = time, y = OD_corr, group =as.factor(well), colour= as.factor(starting_freq_I7)))+
+  geom_line(linewidth=0.3)+
+  geom_point(size=0.5)+
+  facet_grid(  ~ stained_isolate, labeller = labeller( stained_isolate = stain.labs3, predator = predator.labs))+
+  labs(y= "population density [OD]", x= "time [h]")+
+  scale_color_discrete(name = "t(0) vol% I7", breaks = c(0,0.1,0.5,0.9,1), labels = c(0,10,50,90,100), guide="none" )+
+  scale_x_continuous(name= "time [h]", breaks = c(0,2,4,6,8,10))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+         panel.grid.minor = element_blank(),
+         plot.title = element_text(size = 20, face = "bold"),
+         legend.text = element_text(size = 18),
+         legend.title = element_text(size = 18, face = "bold"),
+         legend.key.size = unit(1, "cm"),
+         axis.text = element_text(color = "grey50", size = 18),
+         axis.title = element_text(size = 20),
+         axis.title.y = element_text( colour = "black"),
+         axis.title.y.right = element_text( colour = "#00A9E0"),
+         strip.text = element_text(size = 18, colour = "black", face = "bold"),
+         strip.background = element_rect(color="black", fill="white", linewidth=1, linetype="solid"))
+```
+
+```{r}
+p1/p2+ plot_layout(guides ="collect",heights = c(2,1))
+ggsave("Population_dynamics_OD_isolates.jpg", device = "jpg", path = "Results/", width = 350, height = 350,  units = "mm" )
+
+```
+
+To quantify differences between different starting_frequencies we calculate the carrying capacity of dynamics (maximum OD).
+
+```{r}
+Comp_OD_sorted %>% 
+  filter(!starting_freq_I7 == 0.0,!starting_freq_I7 == 1.0 ) %>% 
+  group_by(starting_freq_I7, stained_isolate, well, predator, sample,row) %>% 
+  reframe(OD_max = max(OD_corr)) %>% 
+  ungroup() %>% 
+  group_by(starting_freq_I7, stained_isolate, predator) %>% 
+  reframe(mean_OD_max= mean(OD_max),
+            OD_max_SE= sd(OD_max)/sqrt(n()))
+```
+
+We fit these values to a linear model.
+
+```{r}
+Comp_OD_sorted$starting_freq_I7 <- as.factor(Comp_OD_sorted$starting_freq_I7)
+
+m_comp_OD_isolates<- Comp_OD_sorted %>% 
+  filter(!starting_freq_I7 == 0.0,!starting_freq_I7 == 1.0 ) %>% 
+  group_by(starting_freq_I7, stained_isolate, well, predator, sample,row) %>% 
+  reframe(OD_max = max(OD_corr)) %>% 
+  ungroup() %>% 
+  lm(OD_max ~ starting_freq_I7 * stained_isolate * predator, data= .) 
+```
+
+Checking model assumptions:
+
+```{r}
+plot(m_comp_OD_isolates)
+```
+
+Model inference:
+
+```{r}
+S_6a <- anova(m_comp_OD_isolates)%>% 
+  rownames_to_column("variable") %>% 
+  as_flextable() %>% 
+  colformat_double( digits = 3) %>% 
+  add_header_lines(values = c("Analysis of variance on a linear model testing how carrying capacity in competition co-cultures depended on initial abundance of genotpye I7, predator presence and the stained genotype. Carrying capacity was calculated as the maximum OD measured within a sample. Formular: OD_max ~ starting_freq_I7 * stained_isolate * predator. P<0.05 was taken as significance threshold.") )
+
+S_6a
+
+#save_as_image(S_6a,"Results/Table_S5.png")
+```
+
+We further compute marginal means using contrasts to test whether there are significant differences in carrying capacity (OD max) between the three different starting frequencies. Considering the interaction of starting frequency with stained clone and predator I derived mean separately for these factors. 
+See these links for information on this procedure. 
+https://cran.r-project.org/web/packages/emmeans/vignettes/interactions.html
+https://stats.stackexchange.com/questions/136495/addressing-note-results-may-be-misleading-due-to-involvement-in-interactions
+
+First, I test the pairwise comparisons. Theses generally show that there is a higher carrying capacity with higher abundances of genotype I6.
+
+```{r}
+mmeans_OD <- m_comp_OD_isolates %>% 
+  emmeans(pairwise ~ starting_freq_I7|predator+stained_isolate)
+
+Table_1 <- mmeans_OD$contrasts %>% 
+  rbind() %>% 
+  as.data.frame() %>% 
+  flextable()%>% 
+  colformat_double( digits = 3) %>% 
+  add_header_lines(values = c("Pairwise comparisons between estimated marginal means (lmerTest:emmeans) derived from a linear model testing how carrying capacity in competition co-cultures depended on experimental manipulations. Within each combination of predator presence and stained genotype, pairwise comparisons between EMMs of different initial abundances of I7 were performed. The following formular was used: pairwise ~ starting_freq_I7|predator+stained_isolate. P<0.05 was taken as significance threshold."))
+
+Table_1
+
+#save_as_image(Table_1,"Results/Table_1.png")
+```
+
+To better illustrate that there is a higher carrying capacity with higher abundances of genotype I6 I report estimated marginal means for each treatment combination.
+
+```{r}
+
+S_6b <- test(emmeans::emmeans(m_comp_OD_isolates, c("starting_freq_I7", "predator", "stained_isolate"))) %>% 
+  as.data.frame() %>% 
+  flextable() %>% 
+  colformat_double( digits = 3)%>% 
+  add_header_lines(values = c("Estimated marginal means (lmerTest:emmeans) derived from a linear model testing how carrying capacity in competition co-cultures depended on experimental manipulations. EMM were estimated across the three initial abundances of genotype I7, predator presence and the stained genotype. P<0.05 was taken as significance threshold."))
+
+    
+S_6b
+#save_as_image(Table_1,"Results/Table_1.png")
+```
+
+The marginal means and their contrasts suggest that starting frequency leads to significant differences in max OD mainly in predator presence.
+This shows that the interaction is important and should not be ignored.
+
+```{r}
+save_as_docx( "Table S4" = S_4, "Table S5a" = S_5a, "Table S5b" = S_5b, "Table S5c" = S_5c, "Table S6a" = S_6a, "Table S6b" = S_6b, path = "Results/Tables_S4-S6_Table_1.docx")
+```
