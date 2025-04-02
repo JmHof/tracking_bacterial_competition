@@ -194,6 +194,37 @@ corr_freq %>%
   knitr::kable("simple", digits = 4)
 ```
 
+```{r}
+corr_freq %>% count(predator)
+```
+
+It was further tested whether these correlations were significantly different from each other.
+This was done on based on Fisher's Z-transformation with code from: https://www.carlosivanrodriguez.com/guides/statistics/correlation/correlation-in-r-2/ 
+
+First, the necessary function is defined:
+r1, r2 are the correlation coefficients, n1, n2 are the corresponding sample sizes (72 in both cases).
+
+```{r}
+zdifference <- function(r1, r2, n1, n2){
+  zd <- (atanh(r1)-atanh(r2))/sqrt(1/(n1-3)+1/(n2-3))
+	p <- 1 - pnorm(abs(zd))
+	print(paste("Z Difference: ", zd))
+	print(paste("One-Tailed P-Value: ", p))
+	print(paste("Two-Tailed P-Value: ", (2*p)))
+	}
+```
+
+Predator presence/absence:
+```{r}
+zdifference(0.96, 0.90, 72, 72)
+```
+
+Stained genotype:
+```{r}
+zdifference(0.95, 0.91, 72, 72)
+```
+
+
 Generally, correlation between frequency estimates on plates and from the ISX is very high.
 Predator free samples seem to have a slightly better correlation than those with predators.
 Similarly, correlation with I6 stained is higher than with I7 stained.
