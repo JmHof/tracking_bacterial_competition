@@ -1,7 +1,8 @@
 library(tidyverse)
 library(data.table)
+library(here)
 
-plates_org <- read.delim("Competition Exp 17_5_23/Counting on plates 17_5_23.txt")
+plates_org <- read.delim(here("Competition_genotypes", "Counting on plates 17_5_23.txt"))
 
 
 plates_org <- plates_org[,1:11] %>% 
@@ -17,4 +18,4 @@ plates_org <- plates_org[,1:11] %>%
 
 
 
-write_tsv(plates_org,"Competition Exp 17_5_23/Freq_on_plates_comp_17_5_23_analysis.tsv" )
+write_tsv(plates_org, here("Competition_genotypes","Freq_on_plates_comp_17_5_23_analysis.tsv" ))
