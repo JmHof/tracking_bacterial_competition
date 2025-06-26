@@ -6,7 +6,7 @@ library(lmerTest)
 #library(lme4)
 
 
-##Processing export data from ISX/Ole for 17_5_23 Assay##
+##Processing export data from ISX for 17_5_23 Assay##
 #########################################################
 #stains_org <- read.csv("Competition Exp 17_5_23/Competition Assay 17_5_23_ISX_thresholding_org.csv")
 
@@ -16,8 +16,8 @@ library(lmerTest)
 ##Therefore, these files need to be combined by extracting those samples for which the appropriate threshold was used. This mean that if isolate I6 was stained then this sample needs to be extracted from the file in which the I6 threshold was applied.
 ##This is done by first annotating the files and then selecting the correct rows of both data sets. Additionally, controls where bacteria where present are separately extracted from the file with the I7 threshold.
 
-stains_I7 <- read.csv("Competition Exp 17_5_23/Ole/Thresholds_19_2_25/stain_counts_thresholding_Intensity_MC_Ch11_201.35.csv")
-stains_I6 <- read.csv("Competition Exp 17_5_23/Ole/Thresholds_19_2_25/stain_counts_thresholding_Intensity_MC_Ch11_858.49.csv")
+stains_I7 <- read.csv("Competition Exp 17_5_23/thresholds/Thresholds_19_2_25/stain_counts_thresholding_Intensity_MC_Ch11_201.35.csv")
+stains_I6 <- read.csv("Competition Exp 17_5_23/thresholds/Thresholds_19_2_25/stain_counts_thresholding_Intensity_MC_Ch11_858.49.csv")
 
 
 ##for loop to annotate both data sets
@@ -139,7 +139,7 @@ ISX_freqs <- ISX_freqs %>%
   ungroup()
 
 #each annotated data set is saved
-write_tsv(ISX_freqs, paste("Competition Exp 17_5_23/Ole/Thresholds_19_2_25/threshold_",isolate[i],".tsv", sep=""))
+write_tsv(ISX_freqs, paste("Competition Exp 17_5_23/thresholds/Thresholds_19_2_25/threshold_",isolate[i],".tsv", sep=""))
 
 }
 #write_tsv(ISX_freqs, "Competition Exp 17_5_23/Freq_ISX_comp_17_5_23_analysis.tsv" )
@@ -147,8 +147,8 @@ write_tsv(ISX_freqs, paste("Competition Exp 17_5_23/Ole/Thresholds_19_2_25/thres
 ##The annotated files are loaded, appropriate data is extracted and then combined in a single file.
 ##This file is then used for the analysis
 
-ISX_freqs_I7 <- read.delim("Competition Exp 17_5_23/Ole/Thresholds_19_2_25/threshold_I7.tsv")
-ISX_freqs_I6 <- read.delim("Competition Exp 17_5_23/Ole/Thresholds_19_2_25/threshold_I6.tsv")
+ISX_freqs_I7 <- read.delim("Competition Exp 17_5_23/thresholds/Thresholds_19_2_25/threshold_I7.tsv")
+ISX_freqs_I6 <- read.delim("Competition Exp 17_5_23/thresholds/Thresholds_19_2_25/threshold_I6.tsv")
 
 no_stained <- ISX_freqs_I7 %>% 
                       filter(stained_isolate == 0)#these are controls without bacteria i.e. blank, only predators
@@ -160,78 +160,3 @@ I6_stained <- ISX_freqs_I6 %>%
 ISX_freqs_combined <- rbind(no_stained,I7_stained,I6_stained)
 
 write_tsv(ISX_freqs_combined, "Competition Exp 17_5_23/Freq_ISX_comp_17_5_23__th_19_2_25.tsv" )
-
-##correction for fading staining## 
-##################################
-#work
-stains <- read.delim("C:/Users/Julius/OneDrive - bwstaff/Promotion/Data/Competition Assay/17_5_23/Competition Assay 17_5_23 ISX_incl_densities.tsv")
-
-#home
-stains <- read.delim("C:/Users/Julius Hoffmann/OneDrive - bwstaff/Promotion/Data/Competition Assay/17_5_23/Competition Assay 17_5_23 ISX_incl_densities.tsv")
-
-
-String_Patterns = c('A', 'H')
-
-stain_corr <- stains %>% 
-  filter(str_detect(replicate, str_c(String_Patterns, collapse = "|"))) %>% 
-  select(replicate, total, stained, stained_isolate, predator, time.point, freq_I7, freq_I6, density_I7, density_I6,Objects_mL)
-
-String_Patterns_2 = c('A1', 'H1','A7', 'H7')
-String_Patterns_3 = c('A5', 'H5','A10', 'H10')
-
-stain_fit_I6 <- stain_corr %>% 
-  filter(str_detect(replicate, str_c(String_Patterns_2, collapse = "|"))) 
-
-stain_fit_I7 <- stain_corr %>% 
-  filter(str_detect(replicate, str_c(String_Patterns_3, collapse = "|"))) 
-
-model <- nls(stained ~ -a * exp(time.point) + c, start = list(a = 10, c = 2000), data = stain_fit_I7)
-
-#assess model fit
-sse <- as.vector((summary(model)[[3]])^2*10) #calculate sse by the residual standard error of the model and DF
-null <- lm(stained~1, data = stain_fit_I7) #a null model
-sst <- as.vector(unlist(summary.aov(null)[[1]][2])) #work out the total variation present in y by comparing to a null model
-sst
-100*(sst-sse)/sst 
-
-#predict fitness from model
-newdata  = data.frame(time.point = c(0,1,2,3,4,5))
-pred_stained <- predict(model,newdata)/2000
-pred_stained_inv <- 1/pred_stained # correction factors for TP 0-5 and I7
-stain_corr_I7 <- data.frame(corr_factor = c(pred_stained_inv,1,1,1,1,1,1) , time.point = c(0,1,2,3,4,5,0,1,2,3,4,5), stained_isolate = c(7,7,7,7,7,7,6,6,6,6,6,6)) #creates a data.frame with correction factors at the time point for I7. 
-#It also contains values for I6 so that it can easily be merges with the original data. Thus, far the correction factor for I6 is a dummy value (1).
-stain_corr_I7$stained_isolate <- as.factor(stain_corr_I7$stained_isolate)
-
-stain_corrected<- stains %>% 
-  filter(!replicate %like% "A") %>% 
-  filter(!replicate %like% "H") %>% 
-  select(stained, total, replicate, starting_freq_I7, stained_isolate, predator, time.point, Objects_mL)
-
-stain_corrected$stained_isolate <- as.factor(stain_corrected$stained_isolate)
-
-stain_corrected <- right_join(stain_corrected,stain_corr_I7, by =c("time.point", "stained_isolate"), unmatched = "drop" )
-
-stain_corrected <- stain_corrected %>% 
-  mutate(stained_corrected = stained * corr_factor) %>% 
-  mutate(freq_I7 = stained_corrected/total ,
-         ratio = stained_corrected/total)
-
-#select rows of samples where I6 was stained and calculate the correct I7 frequency
-stain_corrected[grep(6,stain_corrected[,"stained_isolate"]), "freq_I7"] <-   (1-filter(stain_corrected,stained_isolate== 6)[,"ratio"])
-
-#create freq_I6 and calculate I6 frequency from I7 frequency
-stain_corrected <- stain_corrected %>% 
-  mutate(freq_I6 = 1- freq_I7)
-
-#calculate cell densities of I6 and I7 stain_corrected <- 
-stain_corrected<- stain_corrected %>% 
-  mutate(density_I6 = freq_I6 * Objects_mL,
-         density_I7 = freq_I7 * Objects_mL) %>% 
-  group_by(replicate) %>% 
-  arrange(time.point, .by_group = TRUE) %>% 
-  mutate(rel_fitness = (log(density_I7 / lag(density_I7, default = first(density_I7))) - log(density_I6/lag(density_I6, default = first(density_I6))))/2 ,
-         freq_I7_previous = lag(freq_I7, default = first(freq_I7)) ) %>% 
-  ungroup()
-
-
-write_tsv(stain_corrected, "C:/Users/Julius/OneDrive - bwstaff/Promotion/Data/Competition Assay/17_5_23/Freq_ISX_corr_comp_17_5_23_analysis.tsv" )
