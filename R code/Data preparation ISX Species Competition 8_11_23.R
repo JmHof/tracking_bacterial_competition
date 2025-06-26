@@ -3,16 +3,14 @@ library(data.table)
 library(ggplot2)
 library(lmerTest)
 library(rstatix)
-
-##set working directory to user directory
-#setwd("..")
+library(here)
 
 ##Processing export data from ISX for 8_11_23 Assay##
 #####################################################
 
 #Load ISX data
-plate1_org <- read.delim("Promotion/Data/Competition Assay/Competition Exp Species 8_11_23/Competition_Ch11_320_379_th_TP0-2_2nd_run.txt", skip = 3, dec = ",")
-plate2_org <- read.delim("Promotion/Data/Competition Assay/Competition Exp Species 8_11_23/Competition_Ch11_320_379_th_TP3-5_2nd_run.txt", skip = 3, dec = ",")
+plate1_org <- read.delim(here("Competition_species", "Competition_Ch11_320_379_th_TP0-2_2nd_run.txt"), skip = 3, dec = ",")
+plate2_org <- read.delim(here("Competition_species", "Competition_Ch11_320_379_th_TP3-5_2nd_run.txt"), skip = 3, dec = ",")
 
 
 #1st run data plate preparation 
@@ -173,7 +171,7 @@ ISX_freqs <- ISX_freqs %>%
          freq_Pf_ISX = freq_Pf_ISX * 0.01,
          freq_Ec_ISX = freq_Pf_ISX * 0.01)
 
-write_tsv(ISX_freqs, "Promotion/Data/Competition Assay/Competition Exp Species 8_11_23/Freq_ISX_comp_species_8_11_23_Ch11_TH_320_379.tsv" )
+write_tsv(ISX_freqs, here("Competition_species", "Freq_ISX_comp_species_8_11_23_Ch11_TH_320_379.tsv" ))
 
 
 #plot frequencies derived from stained samples
@@ -185,4 +183,4 @@ ggplot( aes(x = time.point, y = freq_Pf_ISX))+
   ylim(0,1)
 xlim(1,5)
 
-ggsave("ISX_frequencies_all_TP_threshold_420_680_Ch11.jpeg", device = "jpeg", path = "C:/Users/Julius/OneDrive - bwstaff/Promotion/Data/Competition Assay/Competition Exp Species 8_11_23",  dpi = 250, width = 17, height = 11,  units = "in" )               
+ggsave("ISX_frequencies_all_TP_threshold_420_680_Ch11.jpeg", device = "jpeg", path = here("Competition_species"),  dpi = 250, width = 17, height = 11,  units = "in" )               
