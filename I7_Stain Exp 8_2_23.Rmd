@@ -1,6 +1,6 @@
 ---
 title: "I7 Stain Exp 8_2_23"
-author: "Julius Hoffmann"
+author: "Anonymous_1"
 date: "2024-11-26"
 output: html_document
 ---
