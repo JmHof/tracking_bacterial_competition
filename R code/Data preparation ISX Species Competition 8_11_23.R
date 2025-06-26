@@ -7,21 +7,10 @@ library(rstatix)
 ##set working directory to user directory
 #setwd("..")
 
-##Processing export data from IS for 8_11_23 Assay##
-####################################################
-#1st run
-#plate1_org <- read.delim("OneDrive - bwstaff/Promotion/Data/Competition Assay/Competition Exp Species 8_11_23/Competition_CH11_900_th_TP0-2.txt", skip = 3, dec = ",")
-#plate2_org <- read.delim("OneDrive - bwstaff/Promotion/Data/Competition Assay/Competition Exp Species 8_11_23/Competition_CH11_144_th_TP3-5.txt", skip = 3, dec = ",")
+##Processing export data from ISX for 8_11_23 Assay##
+#####################################################
 
-#2nd run
-#plate1_org <- read.delim("Competition Exp Species 8_11_23//Competition_CH11_420_th_TP0-2_2nd_run.txt", skip = 3, dec = ",")
-#plate2_org <- read.delim("Competition Exp Species 8_11_23//Competition_CH11_420_th_TP3-5_2nd_run.txt", skip = 3, dec = ",")
-
-#2nd run with stain dependent thresholds (based on both runs)
-#plate1_org <- read.delim("Competition Exp Species 8_11_23/Competition_Ch11_420_680_th_TP0-2_2nd_run.txt", skip = 3, dec = ",")
-#plate2_org <- read.delim("Competition Exp Species 8_11_23/Competition_Ch11_420_680_th_TP3-5_2nd_run.txt", skip = 3, dec = ",")
-
-#2nd run with stain dependent thresholds (based on 2nd run)
+#Load ISX data
 plate1_org <- read.delim("Promotion/Data/Competition Assay/Competition Exp Species 8_11_23/Competition_Ch11_320_379_th_TP0-2_2nd_run.txt", skip = 3, dec = ",")
 plate2_org <- read.delim("Promotion/Data/Competition Assay/Competition Exp Species 8_11_23/Competition_Ch11_320_379_th_TP3-5_2nd_run.txt", skip = 3, dec = ",")
 
