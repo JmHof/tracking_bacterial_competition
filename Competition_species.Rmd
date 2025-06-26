@@ -1,6 +1,6 @@
 ---
 title: "Competition Pf vs Ec (8_11_23)"
-author: "Julius Hoffmann"
+author: "Anonymous_1"
 date: "2024-02-09"
 output: html_document
 ---
