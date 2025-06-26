@@ -2,7 +2,6 @@ library(tidyverse)
 library(data.table)
 library(ggplot2)
 library(lmerTest)
-#library(lme4)
 library(rstatix)
 
 ##set working directory to user directory
