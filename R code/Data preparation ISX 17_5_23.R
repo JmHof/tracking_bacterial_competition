@@ -3,12 +3,11 @@ library(data.table)
 library(ggplot2)
 library(rstatix)
 library(lmerTest)
-#library(lme4)
+library(here)
 
 
 ##Processing export data from ISX for 17_5_23 Assay##
 #########################################################
-#stains_org <- read.csv("Competition Exp 17_5_23/Competition Assay 17_5_23_ISX_thresholding_org.csv")
 
 ##Anonymous_3 determined thresholds for ioslates I6 and I7 separately using ROCs. He then applied these thresholds on the Fluorescence intensitiy values in Ch11 extracted from the ISX data. 
 ##He did this by applying each of the two thresholds on the complete data set. This resulted in two files each one for each threshold.
@@ -16,8 +15,8 @@ library(lmerTest)
 ##Therefore, these files need to be combined by extracting those samples for which the appropriate threshold was used. This mean that if isolate I6 was stained then this sample needs to be extracted from the file in which the I6 threshold was applied.
 ##This is done by first annotating the files and then selecting the correct rows of both data sets. Additionally, controls where bacteria where present are separately extracted from the file with the I7 threshold.
 
-stains_I7 <- read.csv("Competition Exp 17_5_23/thresholds/Thresholds_19_2_25/stain_counts_thresholding_Intensity_MC_Ch11_201.35.csv")
-stains_I6 <- read.csv("Competition Exp 17_5_23/thresholds/Thresholds_19_2_25/stain_counts_thresholding_Intensity_MC_Ch11_858.49.csv")
+stains_I7 <- read.csv(here("Competition_genotypes/thresholds/Thresholds_19_2_25", "stain_counts_thresholding_Intensity_MC_Ch11_201.35.csv"))
+stains_I6 <- read.csv(here("Competition_genotypes/thresholds/Thresholds_19_2_25", "stain_counts_thresholding_Intensity_MC_Ch11_858.49.csv"))
 
 
 ##for loop to annotate both data sets
@@ -139,16 +138,15 @@ ISX_freqs <- ISX_freqs %>%
   ungroup()
 
 #each annotated data set is saved
-write_tsv(ISX_freqs, paste("Competition Exp 17_5_23/thresholds/Thresholds_19_2_25/threshold_",isolate[i],".tsv", sep=""))
+write_tsv(ISX_freqs, here("Competition_genotypes/thresholds/Thresholds_19_2_25", paste("threshold_",isolate[i],".tsv", sep="")))
 
 }
-#write_tsv(ISX_freqs, "Competition Exp 17_5_23/Freq_ISX_comp_17_5_23_analysis.tsv" )
 
 ##The annotated files are loaded, appropriate data is extracted and then combined in a single file.
 ##This file is then used for the analysis
 
-ISX_freqs_I7 <- read.delim("Competition Exp 17_5_23/thresholds/Thresholds_19_2_25/threshold_I7.tsv")
-ISX_freqs_I6 <- read.delim("Competition Exp 17_5_23/thresholds/Thresholds_19_2_25/threshold_I6.tsv")
+ISX_freqs_I7 <- read.delim( here("Competition_genotypes/thresholds/Thresholds_19_2_25", "threshold_I7.tsv"))
+ISX_freqs_I6 <- read.delim(here("Competition_genotypes/thresholds/Thresholds_19_2_25", "threshold_I6.tsv"))
 
 no_stained <- ISX_freqs_I7 %>% 
                       filter(stained_isolate == 0)#these are controls without bacteria i.e. blank, only predators
@@ -159,4 +157,4 @@ I6_stained <- ISX_freqs_I6 %>%
 
 ISX_freqs_combined <- rbind(no_stained,I7_stained,I6_stained)
 
-write_tsv(ISX_freqs_combined, "Competition Exp 17_5_23/Freq_ISX_comp_17_5_23__th_19_2_25.tsv" )
+write_tsv(ISX_freqs_combined, here("Competition_genotypes", "Freq_ISX_comp_17_5_23__th_19_2_25.tsv" ))
