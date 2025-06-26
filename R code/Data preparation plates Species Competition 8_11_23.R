@@ -1,10 +1,8 @@
 library(tidyverse)
 library(data.table)
+library(here)
 
-#work
-plates_org <- read.delim("C:/Users/Julius/OneDrive - bwstaff/Promotion/Data/Competition Assay/Species 8_11_23/Counting on Plates 8_11_23.txt")
-#home
-plates_org <- read.delim("C:/Users/Julius Hoffmann/OneDrive - bwstaff/Promotion/Data/Competition Assay/Species 8_11_23/Counting on Plates 8_11_23.txt")
+plates_org <- read.delim(here("Competition_species", "Counting on Plates 8_11_23.txt"))
 
 colnames(plates_org)[c(2,3,5,6,9,11,12,13)] <- c("no_Pf","no_Ec","freq_Pf_plate","freq_Ec_plate","rel_fitness","time.point","stained_species","sample") 
 
@@ -20,4 +18,4 @@ plates_org<- plates_org %>%
 
 
 
-write_tsv(plates_org,"C:/Users/Julius Hoffmann/OneDrive - bwstaff/Promotion/Data/Competition Assay/Species 8_11_23/Freq_plates_comp_species_8_11_23.tsv" )
+write_tsv(plates_org,here("Competition_species", "Freq_plates_comp_species_8_11_23.tsv"))
