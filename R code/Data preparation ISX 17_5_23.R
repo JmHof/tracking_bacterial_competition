@@ -10,7 +10,7 @@ library(lmerTest)
 #########################################################
 #stains_org <- read.csv("Competition Exp 17_5_23/Competition Assay 17_5_23_ISX_thresholding_org.csv")
 
-##Ole Johannsen determined thresholds for ioslates I6 and I7 separately using ROCs. He then applied these thresholds on the Fluorescence intensitiy values in Ch11 extracted from the ISX data. 
+##Anonymous_3 determined thresholds for ioslates I6 and I7 separately using ROCs. He then applied these thresholds on the Fluorescence intensitiy values in Ch11 extracted from the ISX data. 
 ##He did this by applying each of the two thresholds on the complete data set. This resulted in two files each one for each threshold.
 ##Thus, in each file half of the samples was thresholded with the wrong threshold (e.g. the I7 threshold although I6 was stained). 
 ##Therefore, these files need to be combined by extracting those samples for which the appropriate threshold was used. This mean that if isolate I6 was stained then this sample needs to be extracted from the file in which the I6 threshold was applied.
