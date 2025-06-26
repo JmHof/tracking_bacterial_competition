@@ -1,6 +1,6 @@
 ---
 title: "Competition Pf Isolate 7 vs Isolate 6 (17_5_23)"
-author: "Julius Hoffmann"
+author: "Anonymous_1"
 date: "2024-02-09"
 output: html_document
 ---
