@@ -52,7 +52,7 @@ S_1 <- threshold_stat %>%
     accuracy =  mean(accuracy),) %>% 
   flextable()%>% 
   colformat_double( digits = 3)%>% 
-  add_header_lines(values = c("Fluorescence thresholds and their performance regarding the un/stained classification are given. Initially, three thresholds (one based on all time points and each one based on TP0 or TP5) were determined for each of the four dye volumes (100µl, 200µl, 300µl and 400µl). The average threshold across dye volumes was calculated for each of the three time points and are displayed in the table. Likewise, performance of the thresholds was evaluated. average_TPR_TNR is the mean between the True Positive Ratio and the True Negative Ratio. Accuracy is the ratio of cells that were correctly classified."))
+  add_header_lines(values = c("Fluorescence thresholds and their performance regarding the un/stained classification are given. Initially, three thresholds (one based on all time points and each one based on TP0 or TP5) were determined for each of the four dye volumes (100µl, 200µl, 300µl and 400µl). The average threshold across dye volumes was calculated for each of the three time points and are displayed in the table. Likewise, performance of the thresholds was evaluated. Average_TPR_TNR is the mean between the True Positive Ratio and the True Negative Ratio. This metric indicates threshold performance on data acquired at the same time point at which the threshold was determined (e.g. threshold based on TP0 data and tested on TP0 data) and shows whether the threshold is well defined on its own time point. Accuracy is the ratio of cells that were correctly classified when the threshold was applied on the entire data set (e.g. threshold based on TP0 data and tested on TP0-TP5 data), thus indicating global threshold performance."))
 
 S_1 
 
@@ -242,3 +242,4 @@ S_3
 ```{r}
 save_as_docx("Table S1" = S_1, "Table S2" = S_2, "Table S3" = S_3,path = "Results/Tables_S1-S3.docx")
 ```
+
