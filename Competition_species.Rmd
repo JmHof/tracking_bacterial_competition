@@ -27,6 +27,8 @@ library(patchwork)
 library(flextable)
 library(tibble)
 library(RColorBrewer)
+library(ipolygrowth)
+library(purrr)
 ```
 
 ## Load data
@@ -431,7 +433,26 @@ Plate_2_OD<- Plate_2_OD %>%
 #Combine data from both plates in one data frame
 Plate_1_2_OD<- rbind(Plate_1_OD,Plate_2_OD)
 
-Plate_1_2_OD <- left_join(Plate_1_2_OD, stain_freqs[,c(6,12)], by = "sample",relationship = "many-to-many")
+Plate_1_2_OD<- Plate_1_2_OD %>% 
+mutate(starting_frequency = case_when((column == 1 | column == 2| column == 3| column == 5| column == 6| column == 7| column == 9 | column == 10| column == 11) & row == "A" ~ 0,
+                                        (column == 1 | column == 2| column == 3| column == 5| column == 6| column == 7| column == 9 | column == 10| column == 11) & row == "H" ~ 1,
+                                        column == 1 & (row == "B" | row == "C"| row == "D"| row == "E"| row == "F"| row == "G") ~ 0.9,
+                                        column == 2 & (row == "B" | row == "C"| row == "D"| row == "E"| row == "F"| row == "G") ~ 0.5,
+                                        column == 3 & (row == "B" | row == "C"| row == "D"| row == "E"| row == "F"| row == "G") ~ 0.1,
+                                        column == 4 & (row == "B" | row == "C") ~ 1,
+                                        column == 4 & (row == "F" | row == "G") ~ 0,
+                                        column == 5 & (row == "B" | row == "C"| row == "D"| row == "E"| row == "F"| row == "G") ~ 0.9,
+                                        column == 6 & (row == "B" | row == "C"| row == "D"| row == "E"| row == "F"| row == "G") ~ 0.5,
+                                        column == 7 & (row == "B" | row == "C"| row == "D"| row == "E"| row == "F"| row == "G") ~ 0.1,
+                                        column == 8 & (row == "B" | row == "C") ~ 1,
+                                        column == 8 & (row == "F" | row == "G") ~ 0,
+                                        column == 9 & (row == "B" | row == "C"| row == "D"| row == "E"| row == "F"| row == "G") ~ 0.9,
+                                        column == 10 & (row == "B" | row == "C"| row == "D"| row == "E"| row == "F"| row == "G") ~ 0.5,
+                                        column == 11 & (row == "B" | row == "C"| row == "D"| row == "E"| row == "F"| row == "G") ~ 0.1,
+                                        column == 12 & (row == "B" | row == "C") ~ 1,
+                                        column == 12 & (row == "F" | row == "G") ~ 0))
+
+
 ```
 
 ```{r}
@@ -445,7 +466,7 @@ We plot population dynamics of competition cultures and mono-culture controls se
 ```{r, echo=FALSE,  fig.dim = c(12, 8), warning=FALSE}
 p1<-Plate_1_2_OD %>% 
   mutate(time = time.point*2) %>% 
-  filter(stained_species == c("Ec","Pf")) %>% 
+  filter(stained_species == c("Ec")|stained_species== c("Pf")) %>% 
 ggplot( aes(x = time, y = OD, group =as.factor(sample), colour= as.factor(starting_frequency)))+
   geom_line(linewidth=0.3)+
   geom_point(size=0.5)+
@@ -583,4 +604,133 @@ The marginal means and their contrasts suggest that carrying capacity was highes
 
 ```{r}
 save_as_docx( "Table S7" = S_7, "Table S8a" = S_8a, "Table S8b" = S_8b, "Table S8c" = S_8c, "Table S9a" = S_9a, "Table S9b" = S_9b, path = "Results/Tables_S7-S9b.docx")
+```
+
+##Growth rates in monoculutres
+
+#To estimate the impact of the fluorescent dye on bacterial growth I compare growth rates of stained and unstained monocultures.
+#For estimating growth rates I am using the package ipolygrowth
+
+#In a first step I sanity check the growth curves data for missing, negative or zero values. 
+
+```{r}
+Plate_1_2_OD %>% 
+  filter(!stained_species == c("blank")) %>% 
+  filter(starting_frequency == 0.0 | starting_frequency == 1.0  ) %>% 
+  mutate(ID= paste(stained_species, row,  sep ="-")) %>%
+  group_by(ID) %>%
+  summarise(
+    n = n(),
+    minOD = min(OD, na.rm = TRUE),
+    maxOD = max(OD, na.rm = TRUE),
+    sdOD = sd(OD, na.rm = TRUE)
+  ) %>%
+  arrange(sdOD)
+```
+
+#With clean data assured I continue the analysis.
+#As ipolygrowth can work with technical replicates the output is a single set of growth parameter estimates for each condition based on two technical replicates per condition.
+
+```{r}
+growth_fits_species <- Plate_1_2_OD %>% 
+  filter(!stained_species == c("blank")) %>% 
+  filter(starting_frequency == 0.0 | starting_frequency == 1.0  ) %>%
+  mutate(time = time.point*2) %>% 
+  ipg_multisample(id="stained_species", time.name = "time", y.name="OD") 
+```
+
+```{r}
+
+growth_output_species <- growth_fits_species$estimates
+
+growth_output_species <- growth_output_species %>% 
+  mutate(staining_condition = case_when(stained_species == "Ec_ctrl" ~ "Ec stained",
+                                        stained_species == "Ec_none" ~ "Ec unstained",
+                                        stained_species == "Pf_ctrl" ~ "Pf stained",
+                                        stained_species == "Pf_none" ~ "Pf unstained"), .before = 1) %>% 
+  select(-stained_species)
+
+colnames(growth_output_species)[1] <- c("staining condition")
+
+table_growth_species <- growth_output_species %>% 
+  flextable() %>% 
+  colformat_double( digits = 3)%>% 
+  add_header_lines(values = c("Table S11. Growth parameters estimated for stained and unstained monocultures of the species E.coli and P.fluorescens. Parameters were estimated based on two replicates per staining condition using 4th degree polynomal functions via the R package ipolygrowth."))
+
+save_as_image(table_growth_species,"Results/monoculture_growth_species.png")
+
+save_as_docx( "Table S11" = table_growth_species,  path = "Results/Table_S11.docx")
+```
+
+## Bootstrapping polynomial fits to compare control and stained growth rates
+
+```{r}
+df_species <- Plate_1_2_OD %>% 
+  filter(!stained_species == c("blank")) %>% 
+  filter(starting_frequency == 0.0 | starting_frequency == 1.0  ) %>%
+  mutate(time = time.point*2)  # 
+
+# Quick sanity check
+df_species %>% count(stained_species)
+
+
+bootstrap_ipg_species <- function(df, species, B = 1000) {
+  
+  df_sub  <- df %>% filter(stained_species == species)
+  samples <- unique(df_sub$sample)
+  
+  purrr::map_dbl(seq_len(B), function(b) {
+    
+    # resample entire growth curves
+    sampled_samples <- sample(samples, length(samples), replace = TRUE)
+    
+    df_boot <- df_sub %>%
+      filter(sample %in% sampled_samples)
+    
+    fit <- ipg_singlesample(df_boot,
+                            time.name = "time",
+                            y.name    = "OD")
+    
+    as.numeric(fit$estimates[1, "peak growth rate"])
+  })
+}
+
+set.seed(42)
+
+boot_Ec      <- bootstrap_ipg_species(df_species, "Ec_ctrl",      B = 500)
+boot_Ec_ctrl <- bootstrap_ipg_species(df_species, "Ec_none", B = 500)
+
+boot_Pf      <- bootstrap_ipg_species(df_species, "Pf_ctrl",      B = 500)
+boot_Pf_ctrl <- bootstrap_ipg_species(df_species, "Pf_none", B = 500)
+
+length(boot_Ec)
+head(boot_Ec)
+
+diff_Ec <- boot_Ec - boot_Ec_ctrl
+diff_Ec <- diff_Ec[is.finite(diff_Ec)]
+
+diff_Pf <- boot_Pf - boot_Pf_ctrl
+diff_Pf <- diff_Pf[is.finite(diff_Pf)]
+
+quantile(diff_Ec, c(0.025, 0.5, 0.975))
+mean(diff_Ec > 0)
+
+quantile(diff_Pf, c(0.025, 0.5, 0.975))
+mean(diff_Pf > 0)
+
+```
+
+```{r}
+par(mfrow = c(1,2))
+
+hist(diff_Ec, breaks = 30,
+     main = "Δ peak growth rate: Ec – Ec_ctrl",
+     xlab = "Difference")
+abline(v = 0, col = "red", lwd = 2)
+
+hist(diff_Pf, breaks = 30,
+     main = "Δ peak growth rate: Pf – Pf_ctrl",
+     xlab = "Difference")
+abline(v = 0, col = "red", lwd = 2)
+
 ```
