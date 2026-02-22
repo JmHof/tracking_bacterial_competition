@@ -27,6 +27,8 @@ library(flextable)
 library(patchwork)
 library(tibble)
 library(RColorBrewer)
+library(ipolygrowth)
+library(purrr)
 ```
 
 ```{r}
@@ -433,7 +435,28 @@ Comp_OD_sorted <- Comp_OD_sorted %>%
   mutate(predator = str_replace_all(predator, pattern = "NA", replacement = "NO")) %>% 
   mutate(time = time.point*2) 
 
-Comp_OD_sorted <- left_join(Comp_OD_sorted, stain_freqs[,c(2,7,10)], by = c("row", "sample"),relationship = "many-to-many")
+Comp_OD_sorted <- Comp_OD_sorted %>% 
+ mutate(starting_freq_I7 = case_when(
+            row == "A" & sample ==  1 ~ 0,
+            row == "A" & sample ==  2 ~ 0,
+            row == "A" & sample ==  3 ~ 0,
+            row == "A" & sample ==  4 ~ 0,
+            row == "A" & sample ==  5 ~ 1,
+            row == "A" & sample ==  6 ~ 1,
+            row == "H" & sample ==  1 ~ 0,
+            row == "H" & sample ==  2 ~ 0,
+            row == "H" & sample ==  3 ~ 0,
+            row == "H" & sample ==  4 ~ 0,
+            row == "H" & sample ==  5 ~ 1,
+            row == "H" & sample ==  6 ~ 1,
+            row != c("A","H") & sample == c(1) ~ 0.9,
+            row != c("A","H") & sample == c(4) ~ 0.9,
+            row != c("A","H") & sample == c(2) ~ 0.5,
+            row != c("A","H") & sample == c(5) ~ 0.5,
+            row != c("A","H") & sample == c(3) ~ 0.1,
+            row != c("A","H") & sample == c(6) ~ 0.1
+          ))
+
 ```
 
 ```{r}
@@ -472,7 +495,7 @@ ggplot(aes(x = time, y = OD_corr, group =as.factor(well), colour= as.factor(star
 
 ```{r}
 p2<-Comp_OD_sorted %>% 
-  filter(starting_freq_I7== c(0,1)) %>% 
+  filter(starting_freq_I7 == 0.0 | starting_freq_I7 == 1.0  ) %>% 
 
 ggplot(aes(x = time, y = OD_corr, group =as.factor(well), colour= as.factor(starting_freq_I7)))+
   geom_line(linewidth=0.3)+
@@ -591,4 +614,131 @@ This shows that the interaction is important and should not be ignored.
 
 ```{r}
 save_as_docx( "Table S4" = S_4, "Table S5a" = S_5a, "Table S5b" = S_5b, "Table S5c" = S_5c, "Table S6a" = S_6a, "Table S6b" = S_6b, path = "Results/Tables_S4-S6_Table_1.docx")
+```
+
+##Growth rates in monoculutres
+
+#To estimate the impact of the fluorescent dye on bacterial growth I compare growth rates of stained and unstained monocultures.
+#For estimating growth rates I am using the package ipolygrowth
+
+#In a first step I sanity check the growth curves data for missing, negative or zero values. 
+
+```{r}
+Comp_OD_sorted %>% 
+  filter(starting_freq_I7 == 0.0 | starting_freq_I7 == 1.0  ) %>% 
+  mutate(ID= paste(stained_isolate, row,  sep ="-")) %>%
+  group_by(ID) %>%
+  summarise(
+    n = n(),
+    minOD = min(OD_corr, na.rm = TRUE),
+    maxOD = max(OD_corr, na.rm = TRUE),
+    sdOD = sd(OD_corr, na.rm = TRUE)
+  ) %>%
+  arrange(sdOD)
+```
+
+#With clean data assured I continue the analysis.
+#As ipolygrowth can work with technical replicates the output is a single set of growth parameter estimates for each condition based on two technical replicates per condition.
+
+```{r}
+growth_fits_genotypes <- Comp_OD_sorted %>% 
+  filter(starting_freq_I7 == 0.0 | starting_freq_I7 == 1.0  ) %>% 
+  ipg_multisample(id="stained_isolate", time.name = "time", y.name="OD_corr") 
+```
+
+```{r}
+
+growth_output_genotypes <- growth_fits_genotypes$estimates
+
+growth_output_genotypes <- growth_output_genotypes %>% 
+  mutate(staining_condition = case_when(stained_isolate == "6" ~ "I6 stained",
+                                        stained_isolate == "6_ctrl" ~ "I6 unstained",
+                                        stained_isolate == "7" ~ "I7 stained",
+                                        stained_isolate == "7_ctrl" ~ "I7 unstained"), .before = 1) %>% 
+  select(-stained_isolate)
+
+colnames(growth_output_genotypes)[1] <- c("staining condition")
+
+table_growth <- growth_output_genotypes %>% 
+  flextable() %>% 
+  colformat_double( digits = 3)%>% 
+  add_header_lines(values = c("Table S10. Growth parameters estimated for stained and unstained monocultures of genotypes I6 and I7. Parameters were estimated based on two replicates per staining condition using 4th degree polynomal functions via the R package ipolygrowth."))
+
+save_as_image(table_growth,"Results/monoculture_growth_genotypes.png")
+
+save_as_docx( "Table S10" = table_growth,  path = "Results/Table_S10.docx")
+```
+
+## Bootstrapping polynomial fits to compare control and stained growth rates
+
+```{r}
+df <- Comp_OD_sorted %>% 
+  filter(starting_freq_I7 == 0.0 | starting_freq_I7 == 1.0  )  
+
+# Quick sanity check
+df %>% count(stained_isolate)
+
+
+bootstrap_ipg_isolate <- function(df, isolate, B = 1000) {
+  
+  df_sub   <- df %>% filter(stained_isolate == isolate)
+  wells  <- unique(df_sub$well)
+  
+  purrr::map_dbl(seq_len(B), function(b) {
+    
+    # Resample entire growth curves
+    sampled_wells <- sample(wells, length(wells), replace = TRUE)
+    
+    df_boot <- df_sub %>%
+      filter(well %in% sampled_wells)
+    
+    fit <- ipolygrowth::ipg_singlesample(
+             df_boot,
+             time.name = "time",
+             y.name    = "OD_corr"
+           )
+    
+    as.numeric(fit$estimates[1, "peak growth rate"])
+  })
+}
+
+
+set.seed(42)
+
+boot_6      <- bootstrap_ipg_isolate(df, "6",      B = 500)
+boot_6_ctrl <- bootstrap_ipg_isolate(df, "6_ctrl", B = 500)
+
+boot_7      <- bootstrap_ipg_isolate(df, "7",      B = 500)
+boot_7_ctrl <- bootstrap_ipg_isolate(df, "7_ctrl", B = 500)
+
+length(boot_6)
+head(boot_6)
+
+diff_6 <- boot_6 - boot_6_ctrl
+diff_6 <- diff_6[is.finite(diff_6)]
+
+diff_7 <- boot_7 - boot_7_ctrl
+diff_7 <- diff_7[is.finite(diff_7)]
+
+quantile(diff_6, c(0.025, 0.5, 0.975))
+mean(diff_6 > 0)
+
+quantile(diff_7, c(0.025, 0.5, 0.975))
+mean(diff_7 > 0)
+
+```
+
+```{r}
+par(mfrow = c(1,2))
+
+hist(diff_6, breaks = 30,
+     main = "Δ peak growth rate: 6 – 6_ctrl",
+     xlab = "Difference")
+abline(v = 0, col = "red", lwd = 2)
+
+hist(diff_7, breaks = 30,
+     main = "Δ peak growth rate: 7 – 7_ctrl",
+     xlab = "Difference")
+abline(v = 0, col = "red", lwd = 2)
+
 ```
